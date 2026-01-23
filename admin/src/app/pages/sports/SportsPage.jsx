@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Plus, Trash2, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { BACKEND_BASE } from "@/lib/env";
 
 export default function SportsPage() {
   const { toast } = useToast();
@@ -40,7 +41,7 @@ export default function SportsPage() {
     setEditing(sport);
     setName(sport.name);
     setIcon(null);
-    setPreview(`http://localhost:5000${sport.iconUrl}`);
+    setPreview(`${BACKEND_BASE}${sport.iconUrl}`);
     setOpen(true);
   };
 
@@ -107,7 +108,7 @@ export default function SportsPage() {
           >
             {/* IMAGE FULL COVER */}
             <img
-              src={`http://localhost:5000${s.iconUrl}`}
+              src={`${BACKEND_BASE}${s.iconUrl}`}
               alt={s.name}
               className="absolute inset-0 w-full h-full object-cover"
             />
