@@ -27,22 +27,16 @@ const app = express();
 // -------------------------------------------
 app.use(
   cors({
-    origin: (origin, callback) => {
-  if (
-    !origin || // allow server-to-server / Postman
-    origin.startsWith("http://localhost") ||
-    origin.startsWith("http://127.0.0.1") ||
-    origin === process.env.FRONTEND_URL
-  ) {
-    callback(null, true);
-  } else {
-    callback(new Error("Not allowed by CORS"));
-  }
-},
-credentials: true,
-
+    origin: [
+      "http://localhost:5173",
+      "http://localhost:5174", // admin local (if used)
+      "https://your-booking.vercel.app",
+      "https://your-admin.vercel.app",
+    ],
+    credentials: true,
   })
 );
+
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
