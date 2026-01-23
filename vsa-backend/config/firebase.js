@@ -2,16 +2,19 @@ const admin = require("firebase-admin");
 
 let serviceAccount;
 
+// ✅ Production / Render (ENV based)
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-  // Production / Render / env-based
   serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-} else {
-  // Local development fallback (optional)
+} 
+// ✅ Local development fallback
+else {
   serviceAccount = require("../firebase-service.json");
 }
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+}
 
 module.exports = admin;
