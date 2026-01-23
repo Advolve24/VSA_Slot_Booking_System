@@ -30,8 +30,8 @@ app.use(
     origin: [
       "http://localhost:5173",
       "http://localhost:5174", // admin local (if used)
-      "https://your-booking.vercel.app",
-      "https://your-admin.vercel.app",
+      "https://vsa-slot-booking-system.vercel.app/",
+      "https://vsa-slot-admin-system.vercel.app/",
     ],
     credentials: true,
   })
