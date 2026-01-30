@@ -1,5 +1,7 @@
 const Enrollment = require("../models/Enrollment");
 const Batch = require("../models/Batch");
+const User = require("../models/User");
+
 
 /* ================= UTIL ================= */
 const calculateEndDate = (startDate, months) => {
@@ -29,6 +31,52 @@ const calculateEnrollmentStatus = (paymentStatus, endDate) => {
   if (diffDays <= 7) return "expiring";
 
   return "active";
+};
+
+/* ================= USER SYNC ================= */
+const createOrUpdateUserFromEnrollment = async ({
+  playerName,
+  mobile,
+  email,
+  sportName,
+}) => {
+  if (!mobile && !email) return null;
+
+  let user = await User.findOne({
+    $or: [{ mobile }, { email }],
+  });
+
+  if (!user) {
+    return await User.create({
+      fullName: playerName,
+      mobile,
+      email,
+      role: "player",
+      sportsPlayed: sportName ? [sportName] : [],
+      memberSince: new Date(),
+    });
+  }
+
+  const updates = {};
+
+  if (!user.fullName && playerName) {
+    updates.fullName = playerName;
+  }
+
+  if (
+    sportName &&
+    (!user.sportsPlayed || !user.sportsPlayed.includes(sportName))
+  ) {
+    updates.$addToSet = { sportsPlayed: sportName };
+  }
+
+  if (Object.keys(updates).length > 0) {
+    user = await User.findByIdAndUpdate(user._id, updates, {
+      new: true,
+    });
+  }
+
+  return user;
 };
 
 
@@ -90,6 +138,14 @@ exports.createEnrollment = async (req, res) => {
     if (source === "admin") {
       finalPaymentStatus = paymentStatus || "unpaid";
     }
+
+    /* ================= CREATE USER PROFILE (🔥 KEY PART) ================= */
+    await createOrUpdateUserFromEnrollment({
+      playerName,
+      mobile,
+      email,
+      sportName: batch.sportId?.name,
+    });
 
     /* ================= ENROLLMENT STATUS ================= */
     let enrollmentStatus = "active";
