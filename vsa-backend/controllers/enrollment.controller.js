@@ -40,43 +40,54 @@ const createOrUpdateUserFromEnrollment = async ({
   email,
   sportName,
 }) => {
-  if (!mobile && !email) return null;
+  try {
+    if (!mobile && !email) return null;
 
-  let user = await User.findOne({
-    $or: [{ mobile }, { email }],
-  });
+    const query = [];
+    if (mobile) query.push({ mobile });
+    if (email) query.push({ email });
 
-  if (!user) {
-    return await User.create({
-      fullName: playerName,
-      mobile,
-      email,
-      role: "player",
-      sportsPlayed: sportName ? [sportName] : [],
-      memberSince: new Date(),
-    });
+    let user = await User.findOne({ $or: query });
+
+    if (!user) {
+      user = await User.create({
+        fullName: playerName,
+        mobile,
+        email,
+        role: "player",
+        sportsPlayed: sportName ? [sportName] : [],
+        memberSince: new Date(),
+      });
+
+      console.log("✅ User created:", user._id);
+      return user;
+    }
+
+    const updates = {};
+
+    if (!user.fullName && playerName) {
+      updates.fullName = playerName;
+    }
+
+    if (
+      sportName &&
+      (!user.sportsPlayed || !user.sportsPlayed.includes(sportName))
+    ) {
+      updates.$addToSet = { sportsPlayed: sportName };
+    }
+
+    if (Object.keys(updates).length > 0) {
+      user = await User.findByIdAndUpdate(user._id, updates, {
+        new: true,
+      });
+      console.log("🔁 User updated:", user._id);
+    }
+
+    return user;
+  } catch (err) {
+    console.error("❌ USER SYNC ERROR:", err.message);
+    return null;
   }
-
-  const updates = {};
-
-  if (!user.fullName && playerName) {
-    updates.fullName = playerName;
-  }
-
-  if (
-    sportName &&
-    (!user.sportsPlayed || !user.sportsPlayed.includes(sportName))
-  ) {
-    updates.$addToSet = { sportsPlayed: sportName };
-  }
-
-  if (Object.keys(updates).length > 0) {
-    user = await User.findByIdAndUpdate(user._id, updates, {
-      new: true,
-    });
-  }
-
-  return user;
 };
 
 
@@ -139,14 +150,6 @@ exports.createEnrollment = async (req, res) => {
       finalPaymentStatus = paymentStatus || "unpaid";
     }
 
-    /* ================= CREATE USER PROFILE (🔥 KEY PART) ================= */
-    await createOrUpdateUserFromEnrollment({
-      playerName,
-      mobile,
-      email,
-      sportName: batch.sportId?.name,
-    });
-
     /* ================= ENROLLMENT STATUS ================= */
     let enrollmentStatus = "active";
 
@@ -180,6 +183,13 @@ exports.createEnrollment = async (req, res) => {
       status: enrollmentStatus,
     });
 
+    /* ================= CREATE USER PROFILE (AFTER SUCCESS) ================= */
+    await createOrUpdateUserFromEnrollment({
+      playerName,
+      mobile,
+      email,
+      sportName: batch.sportId?.name,
+    });
 
     /* INCREMENT BATCH COUNT */
     if (enrollmentStatus === "active") {
