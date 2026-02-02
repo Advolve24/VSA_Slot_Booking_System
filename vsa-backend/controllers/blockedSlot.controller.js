@@ -52,18 +52,21 @@ exports.getBlockedSlots = async (req, res) => {
     if (facilityId) filter.facilityId = facilityId;
     if (date) filter.date = date;
 
-    const data = await BlockedSlot.find(filter)
+    const slots = await BlockedSlot.find(filter)
       .populate("facilityId", "name type")
       .sort({ date: 1 });
 
-    res.set("Cache-Control", "no-store");
-    res.json(data);
+    // ✅ FILTER OUT BROKEN RECORDS
+    const safeSlots = slots.filter(
+      (s) => s.facilityId !== null
+    );
+
+    res.json(safeSlots);
   } catch (err) {
     console.error("GET BLOCKED SLOTS ERROR:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 /* ======================================================
    GET BLOCKED SLOT BY ID (VIEW MODAL)
