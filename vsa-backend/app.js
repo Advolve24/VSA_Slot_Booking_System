@@ -7,16 +7,11 @@ const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
 const sportRoutes = require("./routes/sport.routes");
 const facilityRoutes = require("./routes/facility.routes");
-const timeSlotRoutes = require("./routes/timeslot.routes");
 const batchRoutes = require("./routes/batch.routes");
 const enrollmentRoutes = require("./routes/enrollment.routes");
 const bookingRoutes = require("./routes/booking.routes");
-const attendanceRoutes = require("./routes/attendance.routes");
 const paymentRoutes = require("./routes/payment.routes");
-const notificationRoutes = require("./routes/notification.routes");
-const announcementRoutes = require("./routes/announcement.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
-const activityRoutes = require("./routes/activity.routes");
 const turfRentalRoutes = require("./routes/turfRental.routes");
 
 const app = express();
@@ -65,16 +60,11 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/sports", sportRoutes);
 app.use("/api/facilities", facilityRoutes);
-app.use("/api/timeslots", timeSlotRoutes);
 app.use("/api/batches", batchRoutes);
 app.use("/api/enrollments", enrollmentRoutes);
 app.use("/api/bookings", bookingRoutes);
-app.use("/api/attendance", attendanceRoutes);
 app.use("/api/payments", paymentRoutes);
-app.use("/api/notifications", notificationRoutes);
-app.use("/api/announcements", announcementRoutes);
 app.use("/api/dashboard", dashboardRoutes);
-app.use("/api/activity", activityRoutes);
 app.use("/api/turf-rentals", turfRentalRoutes);
 // -------------------------------------------
 // 404 HANDLER

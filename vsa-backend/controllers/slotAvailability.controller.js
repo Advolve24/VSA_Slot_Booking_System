@@ -1,55 +1,21 @@
 const TurfRental = require("../models/TurfRental");
 const BlockedSlot = require("../models/BlockedSlot");
+const FacilitySlot = require("../models/FacilitySlot");
 const Facility = require("../models/Facility");
 
-/* ================= TIME HELPERS ================= */
-
 const toMinutes = (time) => {
-  if (!time) return null; // 🛡️ SAFETY FIX
+  if (!time) return null;
   const [h, m] = time.split(":").map(Number);
   return h * 60 + m;
 };
 
-const formatLabel = (hour) => {
-  const h = hour % 12 || 12;
-  const ampm = hour < 12 ? "AM" : "PM";
-  return `${h}:00 ${ampm}`;
-};
-
-/* ================= SLOT GENERATOR =================
-   Morning: 7–11 AM
-   Evening: 2–9 PM
-=================================================== */
-
-const generateSlots = () => {
-  const slots = [];
-
-  // Morning (7–11)
-  for (let h = 7; h < 11; h++) slots.push(h);
-
-  // Evening (14–21)
-  for (let h = 14; h < 21; h++) slots.push(h);
-
-  return slots.map((hour) => ({
-    time: `${String(hour).padStart(2, "0")}:00`,
-    label: formatLabel(hour),
-  }));
-};
-
-/* ======================================================
-   GET FACILITY SLOT AVAILABILITY
-   GET /api/facilities/:id/slots?date=YYYY-MM-DD
-====================================================== */
 exports.getFacilitySlots = async (req, res) => {
   try {
     const { id: facilityId } = req.params;
     const { date } = req.query;
 
-    /* ================= VALIDATION ================= */
     if (!facilityId || !date) {
-      return res.status(400).json({
-        message: "facilityId and date are required",
-      });
+      return res.status(400).json({ message: "facilityId and date are required" });
     }
 
     const facility = await Facility.findById(facilityId);
@@ -57,71 +23,77 @@ exports.getFacilitySlots = async (req, res) => {
       return res.status(404).json({ message: "Facility not found" });
     }
 
-    const baseSlots = generateSlots();
-
-    /* 🚫 Facility disabled / maintenance */
+    /* 🚫 Facility disabled */
     if (["maintenance", "disabled"].includes(facility.status)) {
+      const slots = await FacilitySlot.find({ facilityId, isActive: true });
       return res.json(
-        baseSlots.map((slot) => ({
-          ...slot,
+        slots.map((s) => ({
+          time: s.startTime,
+          label: s.label,
           status: "blocked",
         }))
       );
     }
 
-    /* ================= FETCH DATA ================= */
-
-    const blockedSlots = await BlockedSlot.find({
+    /* 1️⃣ Admin-defined slots */
+    const baseSlots = await FacilitySlot.find({
       facilityId,
-      date,
-    });
+      isActive: true,
+    }).sort({ startTime: 1 });
 
+    /* 2️⃣ Blocked slots */
+    const blockedDoc = await BlockedSlot.findOne({ facilityId, date });
+    const blockedSet = new Set(
+      blockedDoc?.slots?.map((s) => s.startTime) || []
+    );
+
+    /* 3️⃣ Bookings */
     const bookings = await TurfRental.find({
       facilityId,
       rentalDate: date,
       bookingStatus: { $ne: "cancelled" },
     });
 
-    /* ================= SLOT STATUS LOGIC ================= */
-
+    /* 4️⃣ Build final slot list */
     const result = baseSlots.map((slot) => {
-      const slotStart = toMinutes(slot.time);
-      const slotEnd = slotStart + 60;
+      const slotStart = toMinutes(slot.startTime);
+      const slotEnd = toMinutes(slot.endTime);
 
-      /* 🔴 BLOCKED SLOT (ADMIN) */
-      const isBlocked = blockedSlots.some((b) => {
-        const start = toMinutes(b.startTime);
-        if (start == null) return false;
-
-        const end = start + 60; // ⏱️ DERIVED END TIME
-        return start < slotEnd && end > slotStart;
-      });
-
-      if (isBlocked) {
-        return { ...slot, status: "blocked" };
+      /* 🔴 BLOCKED */
+      if (blockedSet.has(slot.startTime)) {
+        return {
+          time: slot.startTime,
+          label: slot.label,
+          status: "blocked",
+        };
       }
 
-      /* 🟠 BOOKED SLOT (RENTAL) */
+      /* 🟠 BOOKED */
       const isBooked = bookings.some((b) => {
-        const start = toMinutes(b.startTime);
-        const end = toMinutes(b.endTime);
-
-        if (start == null || end == null) return false;
-
-        return start < slotEnd && end > slotStart;
+        const bStart = toMinutes(b.startTime);
+        const bEnd = toMinutes(b.endTime);
+        return bStart < slotEnd && bEnd > slotStart;
       });
 
       if (isBooked) {
-        return { ...slot, status: "booked" };
+        return {
+          time: slot.startTime,
+          label: slot.label,
+          status: "booked",
+        };
       }
 
       /* 🟢 AVAILABLE */
-      return { ...slot, status: "available" };
+      return {
+        time: slot.startTime,
+        label: slot.label,
+        status: "available",
+      };
     });
 
-    return res.json(result);
+    res.json(result);
   } catch (err) {
     console.error("Slot Availability Error:", err);
-    return res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error" });
   }
 };
