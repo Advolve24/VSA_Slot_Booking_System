@@ -21,7 +21,7 @@ const {
   blockSlot,
   getBlockedSlots,
   getBlockedSlotById,
-  unblockSlot,
+  unblockSlotTime,
 } = require("../controllers/blockedSlot.controller");
 
 /* ======================================================
@@ -36,7 +36,7 @@ router.get("/facilities/:id/slots", getFacilitySlots);
 router.post("/blocked-slots", blockSlot);
 router.get("/blocked-slots", getBlockedSlots);
 router.get("/blocked-slots/:id", getBlockedSlotById);
-router.delete("/blocked-slots/:id", unblockSlot);
+router.delete("/blocked-slots/:id/:startTime", unblockSlotTime);
 
 /* ======================================================
    TURF RENTAL CRUD

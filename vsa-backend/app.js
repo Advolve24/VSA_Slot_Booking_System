@@ -5,7 +5,6 @@ const path = require("path");
 
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
-const studentRoutes = require("./routes/student.routes");
 const sportRoutes = require("./routes/sport.routes");
 const facilityRoutes = require("./routes/facility.routes");
 const timeSlotRoutes = require("./routes/timeslot.routes");
@@ -45,7 +44,7 @@ app.use(cookieParser());
 // -------------------------------------------
 app.use(
   "/uploads",
-  express.static(path.join(process.cwd(), "uploads"))
+  express.static(path.join(__dirname, "uploads"))
 );
 
 // -------------------------------------------
@@ -64,7 +63,6 @@ app.get("/api/health", (_, res) => {
 // -------------------------------------------
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
-app.use("/api/students", studentRoutes);
 app.use("/api/sports", sportRoutes);
 app.use("/api/facilities", facilityRoutes);
 app.use("/api/timeslots", timeSlotRoutes);

@@ -1,5 +1,20 @@
 const mongoose = require("mongoose");
 
+const slotSchema = new mongoose.Schema(
+  {
+    startTime: {
+      type: String, // "07:00"
+      required: true,
+    },
+    reason: {
+      type: String,
+      enum: ["coaching", "maintenance", "event", "admin"],
+      default: "coaching",
+    },
+  },
+  { _id: false }
+);
+
 const blockedSlotSchema = new mongoose.Schema(
   {
     facilityId: {
@@ -13,24 +28,18 @@ const blockedSlotSchema = new mongoose.Schema(
       required: true,
     },
 
-    startTime: {
-      type: String, // "07:00 AM", "08:00 AM"
+    slots: {
+      type: [slotSchema],
       required: true,
+      default: [],
     },
-
-    reason: {
-  type: String,
-  enum: ["coaching", "maintenance", "event", "admin"],
-  default: "coaching",
-}
-
   },
   { timestamps: true }
 );
 
-/* ✅ Prevent duplicate slot block */
+/* ✅ One document per facility per date */
 blockedSlotSchema.index(
-  { facilityId: 1, date: 1, startTime: 1 },
+  { facilityId: 1, date: 1 },
   { unique: true }
 );
 
