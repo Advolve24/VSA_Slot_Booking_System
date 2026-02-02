@@ -1,53 +1,7 @@
-const admin = require("../config/firebase");
+
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const { generateToken } = require("../config/jwt");
-
-/* ======================================================
-   PLAYER LOGIN (Firebase OTP)
-====================================================== */
-exports.firebaseLogin = async (req, res) => {
-  try {
-    const { firebaseToken } = req.body;
-
-    if (!firebaseToken) {
-      return res.status(400).json({ message: "Firebase token required" });
-    }
-
-    const decoded = await admin.auth().verifyIdToken(firebaseToken);
-
-    if (!decoded.phone_number) {
-      return res.status(400).json({ message: "Phone number not found in token" });
-    }
-
-    const mobile = decoded.phone_number;
-
-    let user = await User.findOne({ mobile });
-
-    if (!user) {
-      user = await User.create({
-        fullName: "New User",
-        mobile,
-        role: "player",
-      });
-    }
-
-    const token = generateToken(user);
-
-    res.json({
-      token,
-      user: {
-        id: user._id,
-        fullName: user.fullName,
-        mobile: user.mobile,
-        role: user.role,
-      },
-    });
-  } catch (err) {
-    console.error("Firebase Login Error:", err);
-    res.status(400).json({ message: "Invalid Firebase token" });
-  }
-};
 
 /* ======================================================
    ADMIN LOGIN (EMAIL + PASSWORD)

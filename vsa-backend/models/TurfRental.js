@@ -1,7 +1,12 @@
 const mongoose = require("mongoose");
 
 const turfRentalSchema = new mongoose.Schema(
-  {
+  {  
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
     /* ================= SOURCE ================= */
     source: {
       type: String,

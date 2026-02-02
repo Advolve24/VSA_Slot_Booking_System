@@ -8,23 +8,31 @@ const path = require("path");
 ====================================================== */
 exports.createFacility = async (req, res) => {
   try {
-    const { name, type, capacity, hourlyRate, status } = req.body;
+    const { name, type, hourlyRate, status } = req.body;
 
-    if (!name || !type || !capacity || !hourlyRate) {
+    // handle sports[] from multipart/form-data
+    let sports = req.body.sports || req.body["sports[]"];
+    if (!sports) sports = [];
+    if (!Array.isArray(sports)) sports = [sports];
+
+    if (!name || !type || !hourlyRate || sports.length === 0) {
       return res.status(400).json({
-        message: "Name, type, capacity and hourly rate are required",
+        message:
+          "Name, type, hourly rate and at least one sport are required",
       });
     }
 
     const images =
-      req.files?.map((file) => `/uploads/facilities/${file.filename}`) || [];
+      req.files?.map(
+        (file) => `/uploads/facilities/${file.filename}`
+      ) || [];
 
     const facility = await Facility.create({
       name,
       type,
-      capacity,
       hourlyRate,
       status: status || "active",
+      sports,
       images,
     });
 
@@ -77,29 +85,26 @@ exports.updateFacility = async (req, res) => {
       return res.status(404).json({ message: "Facility not found" });
     }
 
-    const {
-      name,
-      type,
-      capacity,
-      hourlyRate,
-      status,
-      existingImages,
-    } = req.body;
+    const { name, type, hourlyRate, status, existingImages } = req.body;
 
-    facility.name = name ?? facility.name;
-    facility.type = type ?? facility.type;
-    facility.capacity = capacity ?? facility.capacity;
-    facility.hourlyRate = hourlyRate ?? facility.hourlyRate;
+    let sports = req.body.sports || req.body["sports[]"];
+    if (sports && !Array.isArray(sports)) sports = [sports];
 
-    /**
-     * ADMIN STATUS ONLY
-     * active | maintenance | disabled
-     */
-    if (status) {
-      facility.status = status;
+    if (name !== undefined) facility.name = name;
+    if (type !== undefined) facility.type = type;
+    if (hourlyRate !== undefined) facility.hourlyRate = hourlyRate;
+    if (status !== undefined) facility.status = status;
+
+    if (sports !== undefined) {
+      if (sports.length === 0) {
+        return res.status(400).json({
+          message: "At least one sport must be selected",
+        });
+      }
+      facility.sports = sports;
     }
 
-    /* ================= IMAGE REMOVAL ================= */
+    /* ================= IMAGE HANDLING ================= */
     let keptImages = [];
 
     if (existingImages) {
@@ -115,9 +120,10 @@ exports.updateFacility = async (req, res) => {
       keptImages = facility.images;
     }
 
-    /* ================= ADD NEW IMAGES ================= */
     const newImages =
-      req.files?.map((file) => `/uploads/facilities/${file.filename}`) || [];
+      req.files?.map(
+        (file) => `/uploads/facilities/${file.filename}`
+      ) || [];
 
     facility.images = [...keptImages, ...newImages];
 

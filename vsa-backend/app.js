@@ -43,9 +43,10 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 
 // -------------------------------------------
-// STATIC FILES
-// -------------------------------------------
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use(
+  "/uploads",
+  express.static(path.join(process.cwd(), "uploads"))
+);
 
 // -------------------------------------------
 // HEALTH CHECK

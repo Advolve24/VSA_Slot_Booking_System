@@ -1,5 +1,25 @@
 const TurfRental = require("../models/TurfRental");
 const Facility = require("../models/Facility");
+const User = require("../models/User");
+
+/* ================= HELPERS ================= */
+
+const normalizeDate = (d) => {
+  // ensures YYYY-MM-DD
+  return new Date(d).toISOString().slice(0, 10);
+};
+
+const normalizeTime = (t) => {
+  // supports "8:00 PM" OR "20:00"
+  if (!t) return null;
+
+  if (/am|pm/i.test(t)) {
+    const date = new Date(`1970-01-01 ${t}`);
+    return date.toTimeString().slice(0, 5); // HH:mm
+  }
+
+  return t; // already HH:mm
+};
 
 /* ======================================================
    CREATE TURF RENTAL
@@ -39,8 +59,14 @@ exports.createTurfRental = async (req, res) => {
       });
     }
 
+    /* ================= NORMALIZE ================= */
+    const normalizedDate = normalizeDate(rentalDate);
+    const normalizedStart = normalizeTime(startTime);
+    const normalizedEnd = normalizeTime(endTime);
+
+
     /* ================= FACILITY ================= */
-    const facility = await Facility.findById(facilityId);
+    const facility = await Facility.findById(facilityId).populate("sports");
     if (!facility) {
       return res.status(404).json({ message: "Facility not found" });
     }
@@ -48,6 +74,30 @@ exports.createTurfRental = async (req, res) => {
     if (facility.status !== "active") {
       return res.status(409).json({
         message: "Facility is not active",
+      });
+    }
+
+    /* ================= SPORT VALIDATION ================= */
+    const isSportAllowed = facility.sports.some(
+      (s) => s.name.toLowerCase() === sport.toLowerCase()
+    );
+
+    if (!isSportAllowed) {
+      return res.status(400).json({
+        message: `This facility does not support ${sport}`,
+      });
+    }
+
+
+    /* ================= USER UPSERT ================= */
+    let user = await User.findOne({ mobile: phone });
+
+    if (!user) {
+      user = await User.create({
+        fullName: userName.trim(),
+        mobile: phone,
+        email,
+        role: "player",
       });
     }
 
@@ -71,9 +121,9 @@ exports.createTurfRental = async (req, res) => {
       facilityName: facility.name,
       facilityType: facility.type,
       sport,
-      rentalDate,
-      startTime,
-      endTime,
+      rentalDate: normalizedDate,
+      startTime: normalizedStart,
+      endTime: normalizedEnd,
       durationHours,
       hourlyRate,
       baseAmount,

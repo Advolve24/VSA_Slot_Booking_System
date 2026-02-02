@@ -13,16 +13,19 @@ const facilitySchema = new mongoose.Schema(
       required: true,
     },
 
-    capacity: {
-      type: Number,
-      required: true,
-    },
-
     hourlyRate: {
       type: Number,
       required: true,
     },
-    
+
+    sports: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Sport",
+        required: true,
+      },
+    ],
+
     images: [
       {
         type: String, // stored file path

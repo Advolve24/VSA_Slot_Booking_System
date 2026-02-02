@@ -34,62 +34,65 @@ const calculateEnrollmentStatus = (paymentStatus, endDate) => {
 };
 
 /* ================= USER SYNC ================= */
-const createOrUpdateUserFromEnrollment = async ({
+/* ================= USER FIND OR CREATE ================= */
+const findOrCreatePlayerUser = async ({
   playerName,
   mobile,
   email,
   sportName,
 }) => {
-  try {
-    if (!mobile && !email) return null;
-
-    const query = [];
-    if (mobile) query.push({ mobile });
-    if (email) query.push({ email });
-
-    let user = await User.findOne({ $or: query });
-
-    if (!user) {
-      user = await User.create({
-        fullName: playerName,
-        mobile,
-        email,
-        role: "player",
-        sportsPlayed: sportName ? [sportName] : [],
-        memberSince: new Date(),
-      });
-
-      console.log("✅ User created:", user._id);
-      return user;
-    }
-
-    const updates = {};
-
-    if (!user.fullName && playerName) {
-      updates.fullName = playerName;
-    }
-
-    if (
-      sportName &&
-      (!user.sportsPlayed || !user.sportsPlayed.includes(sportName))
-    ) {
-      updates.$addToSet = { sportsPlayed: sportName };
-    }
-
-    if (Object.keys(updates).length > 0) {
-      user = await User.findByIdAndUpdate(user._id, updates, {
-        new: true,
-      });
-      console.log("🔁 User updated:", user._id);
-    }
-
-    return user;
-  } catch (err) {
-    console.error("❌ USER SYNC ERROR:", err.message);
-    return null;
+  if (!mobile && !email) {
+    throw new Error("Mobile or email required to identify player");
   }
-};
 
+  const query = {
+    role: "player",
+    $or: [],
+  };
+
+  if (mobile) query.$or.push({ mobile });
+  if (email) query.$or.push({ email });
+
+  let user = await User.findOne(query);
+
+  /* ===== CREATE NEW PLAYER ===== */
+  if (!user) {
+    user = await User.create({
+      fullName: playerName,
+      mobile,
+      email,
+      role: "player",
+      sportsPlayed: sportName ? [sportName] : [],
+      memberSince: new Date(),
+    });
+
+    console.log("✅ Player user CREATED:", user._id);
+    return user;
+  }
+
+  /* ===== UPDATE EXISTING PLAYER (NON-DESTRUCTIVE) ===== */
+  const updates = {};
+
+  if (!user.fullName && playerName) {
+    updates.fullName = playerName;
+  }
+
+  if (
+    sportName &&
+    (!user.sportsPlayed || !user.sportsPlayed.includes(sportName))
+  ) {
+    updates.$addToSet = { sportsPlayed: sportName };
+  }
+
+  if (Object.keys(updates).length > 0) {
+    user = await User.findByIdAndUpdate(user._id, updates, {
+      new: true,
+    });
+    console.log("🔁 Player user UPDATED:", user._id);
+  }
+
+  return user;
+};
 
 /* ======================================================
    CREATE ENROLLMENT
@@ -150,6 +153,14 @@ exports.createEnrollment = async (req, res) => {
       finalPaymentStatus = paymentStatus || "unpaid";
     }
 
+    /* ================= USER (FIND OR CREATE) ================= */
+    const user = await findOrCreatePlayerUser({
+      playerName,
+      mobile,
+      email,
+      sportName: batch.sportId?.name,
+    });
+
     /* ================= ENROLLMENT STATUS ================= */
     let enrollmentStatus = "active";
 
@@ -181,14 +192,6 @@ exports.createEnrollment = async (req, res) => {
       paymentStatus: finalPaymentStatus,
 
       status: enrollmentStatus,
-    });
-
-    /* ================= CREATE USER PROFILE (AFTER SUCCESS) ================= */
-    await createOrUpdateUserFromEnrollment({
-      playerName,
-      mobile,
-      email,
-      sportName: batch.sportId?.name,
     });
 
     /* INCREMENT BATCH COUNT */
