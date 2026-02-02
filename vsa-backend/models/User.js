@@ -25,26 +25,11 @@ const userSchema = new mongoose.Schema(
     profileImage: String,
     address: String,
 
-    // Firebase OTP / Auth
-    firebaseUID: String,
-
     memberSince: { type: Date, default: Date.now },
 
     // Player-related
     sportsPlayed: [String],
     totalSessions: { type: Number, default: 0 },
-
-    /**
-     * CHILDREN (IMPORTANT)
-     * If this array has entries → user is acting as parent
-     * If empty → user is individual player
-     */
-    children: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Student",
-      },
-    ],
 
     // Notification Preferences
     notificationPreferences: {
