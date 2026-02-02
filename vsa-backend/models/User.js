@@ -31,6 +31,14 @@ const userSchema = new mongoose.Schema(
     sportsPlayed: [String],
     totalSessions: { type: Number, default: 0 },
 
+    children: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+
+
     // Notification Preferences
     notificationPreferences: {
       bookingUpdates: { type: Boolean, default: true },
