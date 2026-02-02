@@ -49,7 +49,10 @@ exports.createFacility = async (req, res) => {
 ====================================================== */
 exports.getFacilities = async (req, res) => {
   try {
-    const facilities = await Facility.find().sort({ createdAt: -1 });
+    const facilities = await Facility.find()
+      .populate("sports", "name") // ✅ FIX
+      .sort({ createdAt: -1 });
+
     res.json(facilities);
   } catch (err) {
     console.error("Get Facilities Error:", err);
@@ -57,22 +60,27 @@ exports.getFacilities = async (req, res) => {
   }
 };
 
+
 /* ======================================================
    GET SINGLE FACILITY
    GET /api/facilities/:id
 ====================================================== */
 exports.getFacilityById = async (req, res) => {
   try {
-    const facility = await Facility.findById(req.params.id);
+    const facility = await Facility.findById(req.params.id)
+      .populate("sports", "name"); // ✅ FIX
+
     if (!facility) {
       return res.status(404).json({ message: "Facility not found" });
     }
+
     res.json(facility);
   } catch (err) {
     console.error("Get Facility Error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 /* ======================================================
    UPDATE FACILITY (ADMIN)

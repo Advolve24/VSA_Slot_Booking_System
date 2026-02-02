@@ -34,7 +34,7 @@ exports.createTurfRental = async (req, res) => {
       email = "",
       notes = "",
       facilityId,
-      sport,
+      sportId,
       rentalDate,
       startTime,
       endTime,
@@ -48,7 +48,7 @@ exports.createTurfRental = async (req, res) => {
       !userName ||
       !phone ||
       !facilityId ||
-      !sport ||
+      !sportId ||
       !rentalDate ||
       !startTime ||
       !endTime ||
@@ -64,9 +64,10 @@ exports.createTurfRental = async (req, res) => {
     const normalizedStart = normalizeTime(startTime);
     const normalizedEnd = normalizeTime(endTime);
 
-
     /* ================= FACILITY ================= */
-    const facility = await Facility.findById(facilityId).populate("sports");
+    const facility = await Facility.findById(facilityId)
+      .populate("sports");
+
     if (!facility) {
       return res.status(404).json({ message: "Facility not found" });
     }
@@ -78,16 +79,15 @@ exports.createTurfRental = async (req, res) => {
     }
 
     /* ================= SPORT VALIDATION ================= */
-    const isSportAllowed = facility.sports.some(
-      (s) => s.name.toLowerCase() === sport.toLowerCase()
+    const allowedSport = facility.sports.find(
+      (s) => s._id.toString() === sportId
     );
 
-    if (!isSportAllowed) {
+    if (!allowedSport) {
       return res.status(400).json({
-        message: `This facility does not support ${sport}`,
+        message: "This facility does not support the selected sport",
       });
     }
-
 
     /* ================= USER UPSERT ================= */
     let user = await User.findOne({ mobile: phone });
@@ -110,25 +110,32 @@ exports.createTurfRental = async (req, res) => {
     const bookingStatus =
       paymentStatus === "paid" ? "confirmed" : "pending";
 
-    /* ================= CREATE ================= */
+    /* ================= CREATE RENTAL ================= */
     const rental = await TurfRental.create({
       source,
+      userId: user._id,
       userName,
       phone,
       email,
       notes,
+
       facilityId,
       facilityName: facility.name,
       facilityType: facility.type,
-      sport,
+
+      sportId: allowedSport._id,
+      sportName: allowedSport.name,
+
       rentalDate: normalizedDate,
       startTime: normalizedStart,
       endTime: normalizedEnd,
       durationHours,
+
       hourlyRate,
       baseAmount,
       taxAmount,
       totalAmount,
+
       paymentMode,
       paymentStatus,
       bookingStatus,

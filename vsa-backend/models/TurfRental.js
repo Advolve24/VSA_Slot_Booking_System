@@ -56,12 +56,16 @@ const turfRentalSchema = new mongoose.Schema(
       required: true,
     },
 
-    /* ================= BOOKING TIME ================= */
-    sport: {
-      type: String,
+     sportId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Sport",
       required: true,
     },
 
+    sportName: {
+      type: String,
+      required: true,
+    },
     rentalDate: {
       type: String, // YYYY-MM-DD
       required: true,
