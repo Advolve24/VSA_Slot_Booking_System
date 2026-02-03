@@ -1,8 +1,8 @@
 const BlockedSlot = require("../models/BlockedSlot");
-
+const FacilitySlot = require("../models/FacilitySlot");
 
 /* ======================================================
-   BLOCK SLOTS (CREATE OR UPDATE)
+   BLOCK SLOTS (ONLY FROM ACTIVE FACILITY SLOTS)
    POST /api/turf-rentals/blocked-slots
 ====================================================== */
 exports.blockSlot = async (req, res) => {
@@ -15,11 +15,48 @@ exports.blockSlot = async (req, res) => {
       });
     }
 
+    /* --------------------------------------------------
+       1️⃣ Fetch ACTIVE facility slots
+    -------------------------------------------------- */
+    const facilitySlotDoc = await FacilitySlot.findOne({ facilityId });
+
+    if (!facilitySlotDoc || !facilitySlotDoc.slots.length) {
+      return res.status(400).json({
+        message: "No active slots found for this facility",
+      });
+    }
+
+    const activeSlotSet = new Set(
+      facilitySlotDoc.slots
+        .filter((s) => s.isActive)
+        .map((s) => s.startTime)
+    );
+
+    /* --------------------------------------------------
+       2️⃣ Validate requested blocked slots
+    -------------------------------------------------- */
+    const invalidSlots = slots.filter(
+      (time) => !activeSlotSet.has(time)
+    );
+
+    if (invalidSlots.length > 0) {
+      return res.status(409).json({
+        message: "Some slots are not valid or inactive",
+        invalidSlots,
+      });
+    }
+
+    /* --------------------------------------------------
+       3️⃣ Prepare slot objects
+    -------------------------------------------------- */
     const slotObjects = slots.map((time) => ({
       startTime: time,
       reason,
     }));
 
+    /* --------------------------------------------------
+       4️⃣ UPSERT blocked slots (no duplicates)
+    -------------------------------------------------- */
     const doc = await BlockedSlot.findOneAndUpdate(
       { facilityId, date },
       {
@@ -40,8 +77,7 @@ exports.blockSlot = async (req, res) => {
 };
 
 /* ======================================================
-   GET BLOCKED SLOTS
-   LIST OR TABLE VIEW
+   GET BLOCKED SLOTS (TABLE / FILTER VIEW)
    GET /api/turf-rentals/blocked-slots
 ====================================================== */
 exports.getBlockedSlots = async (req, res) => {
@@ -56,10 +92,8 @@ exports.getBlockedSlots = async (req, res) => {
       .populate("facilityId", "name type")
       .sort({ date: 1 });
 
-    // ✅ FILTER OUT BROKEN RECORDS
-    const safeSlots = slots.filter(
-      (s) => s.facilityId !== null
-    );
+    // ✅ safety: ignore deleted facilities
+    const safeSlots = slots.filter((s) => s.facilityId);
 
     res.json(safeSlots);
   } catch (err) {
@@ -69,8 +103,7 @@ exports.getBlockedSlots = async (req, res) => {
 };
 
 /* ======================================================
-   GET BLOCKED SLOT BY ID (VIEW MODAL)
-   GET /api/turf-rentals/blocked-slots/:id
+   GET BLOCKED SLOT BY ID
 ====================================================== */
 exports.getBlockedSlotById = async (req, res) => {
   try {
@@ -89,7 +122,6 @@ exports.getBlockedSlotById = async (req, res) => {
 
 /* ======================================================
    UNBLOCK SINGLE SLOT TIME
-   DELETE /api/turf-rentals/blocked-slots/:id/:startTime
 ====================================================== */
 exports.unblockSlotTime = async (req, res) => {
   try {
@@ -105,17 +137,16 @@ exports.unblockSlotTime = async (req, res) => {
       return res.status(404).json({ message: "Blocked slot not found" });
     }
 
-    // ✅ if no slots left, delete whole doc
-    if (!updated.slots || updated.slots.length === 0) {
+    if (!updated.slots.length) {
       await BlockedSlot.findByIdAndDelete(id);
       return res.json({
-        message: "Slot unblocked and entry deleted (no slots left)",
+        message: "Slot unblocked (entry removed)",
         data: null,
       });
     }
 
     res.json({
-      message: "Slot time unblocked",
+      message: "Slot unblocked",
       data: updated,
     });
   } catch (err) {
@@ -124,10 +155,8 @@ exports.unblockSlotTime = async (req, res) => {
   }
 };
 
-
 /* ======================================================
-   DELETE WHOLE ENTRY (ALL SLOTS FOR DATE)
-   DELETE /api/turf-rentals/blocked-slots/:id
+   DELETE WHOLE BLOCKED ENTRY
 ====================================================== */
 exports.deleteBlockedEntry = async (req, res) => {
   try {
@@ -137,9 +166,12 @@ exports.deleteBlockedEntry = async (req, res) => {
       return res.status(404).json({ message: "Blocked slot not found" });
     }
 
-    res.json({ message: "Blocked entry deleted", data: deleted });
+    res.json({
+      message: "Blocked entry deleted",
+      data: deleted,
+    });
   } catch (err) {
-    console.error("DELETE ENTRY ERROR:", err);
+    console.error("DELETE BLOCKED ENTRY ERROR:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
