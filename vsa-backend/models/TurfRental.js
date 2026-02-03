@@ -1,118 +1,58 @@
-const mongoose = require("mongoose");
-
 const turfRentalSchema = new mongoose.Schema(
-  {  
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-    },
+  {
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 
-    /* ================= SOURCE ================= */
     source: {
       type: String,
       enum: ["website", "admin"],
       default: "website",
     },
 
-    /* ================= USER ================= */
-    userName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    userName: { type: String, required: true },
+    phone: { type: String, required: true },
+    email: { type: String, default: "" },
+    notes: { type: String, default: "" },
 
-    phone: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    email: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-
-    notes: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-
-    /* ================= FACILITY ================= */
     facilityId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Facility",
       required: true,
     },
+    facilityName: String,
+    facilityType: String,
 
-    facilityName: {
-      type: String,
-      required: true,
-    },
-
-    facilityType: {
-      type: String,
-      required: true,
-    },
-
-     sportId: {
+    sportId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Sport",
       required: true,
     },
+    sportName: String,
 
-    sportName: {
-      type: String,
-      required: true,
-    },
     rentalDate: {
       type: String, // YYYY-MM-DD
       required: true,
     },
 
-    startTime: {
-      type: String, // "07:00"
-      required: true,
-    },
-
-    endTime: {
-      type: String, // "09:00"
+    /* ✅ MULTI SLOT SUPPORT */
+    slots: {
+      type: [String], // ["07:00", "08:00"]
       required: true,
     },
 
     durationHours: {
       type: Number,
       required: true,
-      min: 1,
     },
 
-    /* ================= PRICE ================= */
-    hourlyRate: {
-      type: Number,
-      required: true,
-    },
+    hourlyRate: Number,
+    baseAmount: Number,
+    taxAmount: { type: Number, default: 0 },
+    totalAmount: Number,
 
-    baseAmount: {
-      type: Number,
-      required: true,
-    },
-
-    taxAmount: {
-      type: Number,
-      default: 0,
-    },
-
-    totalAmount: {
-      type: Number,
-      required: true,
-    },
-
-    /* ================= PAYMENT ================= */
     paymentMode: {
       type: String,
       enum: ["razorpay", "cash", "upi"],
-      default: "razorpay",
+      default: "cash",
     },
 
     paymentStatus: {
@@ -121,7 +61,6 @@ const turfRentalSchema = new mongoose.Schema(
       default: "pending",
     },
 
-    /* ================= BOOKING STATE ================= */
     bookingStatus: {
       type: String,
       enum: ["confirmed", "pending", "cancelled"],

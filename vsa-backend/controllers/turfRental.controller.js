@@ -9,23 +9,9 @@ const User = require("../models/User");
 const normalizeDate = (d) =>
   new Date(d).toISOString().slice(0, 10);
 
-const normalizeTime = (t) => {
-  if (!t) return null;
-
-  if (/am|pm/i.test(t)) {
-    const date = new Date(`1970-01-01 ${t}`);
-    return date.toTimeString().slice(0, 5);
-  }
-  return t;
-};
-
-const toMinutes = (time) => {
-  const [h, m] = time.split(":").map(Number);
-  return h * 60 + m;
-};
-
 /* ======================================================
-   CREATE TURF RENTAL (SLOT-AWARE)
+   CREATE TURF RENTAL (MULTI SLOT)
+   POST /api/turf-rentals
 ====================================================== */
 exports.createTurfRental = async (req, res) => {
   try {
@@ -38,36 +24,30 @@ exports.createTurfRental = async (req, res) => {
       facilityId,
       sportId,
       rentalDate,
-      startTime,
-      endTime,
-      durationHours,
+      slots, // ✅ ["07:00","08:00"]
       paymentMode = "cash",
       paymentStatus = "pending",
     } = req.body;
 
-    /* ================= BASIC VALIDATION ================= */
+    /* ================= VALIDATION ================= */
     if (
       !userName ||
       !phone ||
       !facilityId ||
       !sportId ||
       !rentalDate ||
-      !startTime ||
-      !endTime ||
-      !durationHours
+      !Array.isArray(slots) ||
+      slots.length === 0
     ) {
       return res.status(400).json({
         message: "Missing required fields",
       });
     }
 
-    const normalizedDate = normalizeDate(rentalDate);
-    const normalizedStart = normalizeTime(startTime);
-    const normalizedEnd = normalizeTime(endTime);
+    const date = normalizeDate(rentalDate);
 
     /* ================= FACILITY ================= */
-    const facility = await Facility.findById(facilityId)
-      .populate("sports");
+    const facility = await Facility.findById(facilityId).populate("sports");
 
     if (!facility) {
       return res.status(404).json({ message: "Facility not found" });
@@ -90,7 +70,7 @@ exports.createTurfRental = async (req, res) => {
       });
     }
 
-    /* ================= SLOT VALIDATION ================= */
+    /* ================= SLOT DEFINITION ================= */
     const slotDoc = await FacilitySlot.findOne({ facilityId });
 
     if (!slotDoc) {
@@ -99,54 +79,45 @@ exports.createTurfRental = async (req, res) => {
       });
     }
 
-    const selectedSlot = slotDoc.slots.find(
-      (s) =>
-        s.startTime === normalizedStart &&
-        s.endTime === normalizedEnd &&
-        s.isActive
+    const activeSlots = slotDoc.slots
+      .filter((s) => s.isActive)
+      .map((s) => s.startTime);
+
+    const invalidSlots = slots.filter(
+      (t) => !activeSlots.includes(t)
     );
 
-    if (!selectedSlot) {
+    if (invalidSlots.length) {
       return res.status(409).json({
-        message: "Selected slot is not available",
+        message: "Invalid slot(s) selected",
+        invalidSlots,
       });
     }
 
     /* ================= BLOCKED SLOT CHECK ================= */
-    const blockedDoc = await BlockedSlot.findOne({
+    const blocked = await BlockedSlot.findOne({
       facilityId,
-      date: normalizedDate,
+      date,
+      "slots.startTime": { $in: slots },
     });
 
-    if (
-      blockedDoc?.slots?.some(
-        (s) => s.startTime === normalizedStart
-      )
-    ) {
+    if (blocked) {
       return res.status(409).json({
-        message: "Selected slot is blocked for this date",
+        message: "One or more slots are blocked",
       });
     }
 
-    /* ================= BOOKING OVERLAP CHECK ================= */
-    const slotStartMin = toMinutes(normalizedStart);
-    const slotEndMin = toMinutes(normalizedEnd);
-
-    const overlapping = await TurfRental.exists({
+    /* ================= OVERLAP CHECK (🔥 SIMPLE) ================= */
+    const alreadyBooked = await TurfRental.findOne({
       facilityId,
-      rentalDate: normalizedDate,
+      rentalDate: date,
       bookingStatus: { $ne: "cancelled" },
-      $expr: {
-        $and: [
-          { $lt: [{ $toInt: { $substr: ["$startTime", 0, 2] } }, slotEndMin / 60] },
-          { $gt: [{ $toInt: { $substr: ["$endTime", 0, 2] } }, slotStartMin / 60] },
-        ],
-      },
+      slots: { $in: slots }, // ✅ THIS IS THE MAGIC
     });
 
-    if (overlapping) {
+    if (alreadyBooked) {
       return res.status(409).json({
-        message: "Slot already booked",
+        message: "One or more slots already booked",
       });
     }
 
@@ -163,10 +134,11 @@ exports.createTurfRental = async (req, res) => {
     }
 
     /* ================= PRICE ================= */
+    const durationHours = slots.length;
     const hourlyRate = facility.hourlyRate;
-    const baseAmount = hourlyRate * Number(durationHours);
+    const baseAmount = hourlyRate * durationHours;
     const taxAmount = 0;
-    const totalAmount = baseAmount + taxAmount;
+    const totalAmount = baseAmount;
 
     const bookingStatus =
       paymentStatus === "paid" ? "confirmed" : "pending";
@@ -187,9 +159,8 @@ exports.createTurfRental = async (req, res) => {
       sportId: allowedSport._id,
       sportName: allowedSport.name,
 
-      rentalDate: normalizedDate,
-      startTime: normalizedStart,
-      endTime: normalizedEnd,
+      rentalDate: date,
+      slots, // ✅ STORE DIRECTLY
       durationHours,
 
       hourlyRate,
@@ -245,10 +216,8 @@ exports.getTurfRentalById = async (req, res) => {
 };
 
 /* ======================================================
-   UPDATE / CANCEL / DELETE
-   (same as your existing code – no slot change)
+   UPDATE TURF RENTAL (NO SLOT CHANGE)
 ====================================================== */
-
 exports.updateTurfRental = async (req, res) => {
   try {
     const rental = await TurfRental.findById(req.params.id);
@@ -258,10 +227,11 @@ exports.updateTurfRental = async (req, res) => {
 
     Object.assign(rental, req.body);
 
-    if (req.body.durationHours) {
+    if (req.body.slots) {
+      rental.durationHours = req.body.slots.length;
       rental.baseAmount =
-        rental.hourlyRate * Number(req.body.durationHours);
-      rental.totalAmount = rental.baseAmount + rental.taxAmount;
+        rental.hourlyRate * rental.durationHours;
+      rental.totalAmount = rental.baseAmount;
     }
 
     await rental.save();
@@ -272,6 +242,9 @@ exports.updateTurfRental = async (req, res) => {
   }
 };
 
+/* ======================================================
+   CANCEL TURF RENTAL
+====================================================== */
 exports.cancelTurfRental = async (req, res) => {
   try {
     const rental = await TurfRental.findById(req.params.id);
@@ -289,6 +262,9 @@ exports.cancelTurfRental = async (req, res) => {
   }
 };
 
+/* ======================================================
+   DELETE TURF RENTAL
+====================================================== */
 exports.deleteTurfRental = async (req, res) => {
   try {
     const rental = await TurfRental.findByIdAndDelete(req.params.id);
