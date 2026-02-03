@@ -3,6 +3,24 @@ const fs = require("fs");
 const path = require("path");
 
 /* ======================================================
+   HELPER: SAFE FILE DELETE
+====================================================== */
+const deleteFileSafe = (relativePath) => {
+  if (!relativePath) return;
+
+  // remove leading slash if exists
+  const cleanPath = relativePath.startsWith("/")
+    ? relativePath.slice(1)
+    : relativePath;
+
+  const filePath = path.join(__dirname, "..", cleanPath);
+
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+};
+
+/* ======================================================
    CREATE FACILITY (ADMIN)
    POST /api/facilities
 ====================================================== */
@@ -10,7 +28,7 @@ exports.createFacility = async (req, res) => {
   try {
     const { name, type, hourlyRate, status } = req.body;
 
-    // handle sports[] from multipart/form-data
+    /* -------- sports[] handling (multipart-safe) -------- */
     let sports = req.body.sports || req.body["sports[]"];
     if (!sports) sports = [];
     if (!Array.isArray(sports)) sports = [sports];
@@ -22,6 +40,7 @@ exports.createFacility = async (req, res) => {
       });
     }
 
+    /* -------- images -------- */
     const images =
       req.files?.map(
         (file) => `/uploads/facilities/${file.filename}`
@@ -50,7 +69,7 @@ exports.createFacility = async (req, res) => {
 exports.getFacilities = async (req, res) => {
   try {
     const facilities = await Facility.find()
-      .populate("sports", "name") // ✅ FIX
+      .populate("sports", "name")
       .sort({ createdAt: -1 });
 
     res.json(facilities);
@@ -60,7 +79,6 @@ exports.getFacilities = async (req, res) => {
   }
 };
 
-
 /* ======================================================
    GET SINGLE FACILITY
    GET /api/facilities/:id
@@ -68,7 +86,7 @@ exports.getFacilities = async (req, res) => {
 exports.getFacilityById = async (req, res) => {
   try {
     const facility = await Facility.findById(req.params.id)
-      .populate("sports", "name"); // ✅ FIX
+      .populate("sports", "name");
 
     if (!facility) {
       return res.status(404).json({ message: "Facility not found" });
@@ -80,7 +98,6 @@ exports.getFacilityById = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 /* ======================================================
    UPDATE FACILITY (ADMIN)
@@ -95,6 +112,7 @@ exports.updateFacility = async (req, res) => {
 
     const { name, type, hourlyRate, status, existingImages } = req.body;
 
+    /* -------- sports[] handling -------- */
     let sports = req.body.sports || req.body["sports[]"];
     if (sports && !Array.isArray(sports)) sports = [sports];
 
@@ -104,7 +122,7 @@ exports.updateFacility = async (req, res) => {
     if (status !== undefined) facility.status = status;
 
     if (sports !== undefined) {
-      if (sports.length === 0) {
+      if (!sports.length) {
         return res.status(400).json({
           message: "At least one sport must be selected",
         });
@@ -118,10 +136,10 @@ exports.updateFacility = async (req, res) => {
     if (existingImages) {
       keptImages = JSON.parse(existingImages);
 
+      // delete removed images
       facility.images.forEach((img) => {
         if (!keptImages.includes(img)) {
-          const filePath = path.join(__dirname, "..", img);
-          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+          deleteFileSafe(img);
         }
       });
     } else {
@@ -154,12 +172,13 @@ exports.deleteFacility = async (req, res) => {
       return res.status(404).json({ message: "Facility not found" });
     }
 
+    // delete all images from disk
     facility.images.forEach((img) => {
-      const filePath = path.join(__dirname, "..", img);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      deleteFileSafe(img);
     });
 
     await facility.deleteOne();
+
     res.json({ message: "Facility deleted successfully" });
   } catch (err) {
     console.error("Delete Facility Error:", err);
