@@ -13,6 +13,7 @@ const bookingRoutes = require("./routes/booking.routes");
 const paymentRoutes = require("./routes/payment.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
 const turfRentalRoutes = require("./routes/turfRental.routes");
+const facilitySlotRoutes= require("./routes/facilitySlot.routes");
 
 const app = express();
 
@@ -66,6 +67,8 @@ app.use("/api/bookings", bookingRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/turf-rentals", turfRentalRoutes);
+app.use("/api/facility-slots",facilitySlotRoutes);
+
 // -------------------------------------------
 // 404 HANDLER
 // -------------------------------------------
