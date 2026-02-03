@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const FacilitySlot = require("../models/FacilitySlot");
 const TurfRental = require("../models/TurfRental");
 
@@ -19,55 +20,64 @@ const buildLabel = (start, end) => {
 };
 
 /* ======================================================
-   CREATE SLOT (ADMIN)
+   ADD / UPSERT MULTIPLE SLOTS FOR A FACILITY
    POST /api/facility-slots
 ====================================================== */
-exports.createSlot = async (req, res) => {
+exports.upsertFacilitySlots = async (req, res) => {
   try {
-    const { facilityId, startTime, endTime, isActive = true } = req.body;
+    const { facilityId, slots } = req.body;
 
-    if (!facilityId || !startTime || !endTime) {
+    if (!facilityId || !Array.isArray(slots)) {
       return res.status(400).json({
-        message: "facilityId, startTime and endTime are required",
+        message: "facilityId and slots array are required",
       });
     }
 
-    const startMin = toMinutes(startTime);
-    const endMin = toMinutes(endTime);
+    // Prepare slots
+    const preparedSlots = slots.map((s) => {
+      if (!s.startTime || !s.endTime) {
+        throw new Error("startTime and endTime are required");
+      }
 
-    if (startMin >= endMin) {
-      return res.status(400).json({
-        message: "End time must be after start time",
-      });
-    }
+      if (toMinutes(s.startTime) >= toMinutes(s.endTime)) {
+        throw new Error("End time must be after start time");
+      }
 
-    /* ❌ Prevent overlapping slots */
-    const existingSlots = await FacilitySlot.find({ facilityId });
-
-    const overlap = existingSlots.some((s) => {
-      const sStart = toMinutes(s.startTime);
-      const sEnd = toMinutes(s.endTime);
-      return startMin < sEnd && endMin > sStart;
+      return {
+        _id: s._id || new mongoose.Types.ObjectId(),
+        startTime: s.startTime,
+        endTime: s.endTime,
+        isActive: s.isActive !== false,
+        label: buildLabel(s.startTime, s.endTime),
+      };
     });
 
-    if (overlap) {
-      return res.status(409).json({
-        message: "Slot overlaps with an existing slot",
-      });
+    /* ❌ Overlap check */
+    const sorted = [...preparedSlots].sort(
+      (a, b) => toMinutes(a.startTime) - toMinutes(b.startTime)
+    );
+
+    for (let i = 1; i < sorted.length; i++) {
+      if (
+        toMinutes(sorted[i].startTime) <
+        toMinutes(sorted[i - 1].endTime)
+      ) {
+        return res.status(409).json({
+          message: "Slots overlap with each other",
+        });
+      }
     }
 
-    const slot = await FacilitySlot.create({
-      facilityId,
-      startTime,
-      endTime,
-      isActive,
-      label: buildLabel(startTime, endTime),
-    });
+    const doc = await FacilitySlot.findOneAndUpdate(
+      { facilityId },
+      { facilityId, slots: preparedSlots },
+      { upsert: true, new: true }
+    );
 
-    res.status(201).json(slot);
+    res.json(doc);
   } catch (err) {
-    console.error("Create Slot Error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("Upsert Facility Slots Error:", err);
+    res.status(500).json({ message: err.message });
   }
 };
 
@@ -85,11 +95,9 @@ exports.getSlotsByFacility = async (req, res) => {
       });
     }
 
-    const slots = await FacilitySlot.find({ facilityId }).sort({
-      startTime: 1,
-    });
+    const doc = await FacilitySlot.findOne({ facilityId });
 
-    res.json(slots);
+    res.json(doc?.slots || []);
   } catch (err) {
     console.error("Get Slots Error:", err);
     res.status(500).json({ message: "Server error" });
@@ -97,45 +105,45 @@ exports.getSlotsByFacility = async (req, res) => {
 };
 
 /* ======================================================
-   UPDATE SLOT (ADMIN)
-   PUT /api/facility-slots/:id
+   UPDATE SINGLE SLOT INSIDE FACILITY
+   PUT /api/facility-slots/:facilityId/:slotId
 ====================================================== */
 exports.updateSlot = async (req, res) => {
   try {
-    const slot = await FacilitySlot.findById(req.params.id);
+    const { facilityId, slotId } = req.params;
+    const { startTime, endTime, isActive } = req.body;
+
+    const doc = await FacilitySlot.findOne({ facilityId });
+    if (!doc) {
+      return res.status(404).json({ message: "Facility slots not found" });
+    }
+
+    const slot = doc.slots.id(slotId);
     if (!slot) {
       return res.status(404).json({ message: "Slot not found" });
     }
 
-    const { startTime, endTime, isActive } = req.body;
-
     const newStart = startTime ?? slot.startTime;
     const newEnd = endTime ?? slot.endTime;
 
-    const startMin = toMinutes(newStart);
-    const endMin = toMinutes(newEnd);
-
-    if (startMin >= endMin) {
+    if (toMinutes(newStart) >= toMinutes(newEnd)) {
       return res.status(400).json({
         message: "End time must be after start time",
       });
     }
 
-    /* ❌ Prevent overlap (exclude self) */
-    const otherSlots = await FacilitySlot.find({
-      facilityId: slot.facilityId,
-      _id: { $ne: slot._id },
-    });
-
-    const overlap = otherSlots.some((s) => {
-      const sStart = toMinutes(s.startTime);
-      const sEnd = toMinutes(s.endTime);
-      return startMin < sEnd && endMin > sStart;
+    /* ❌ Overlap check (exclude self) */
+    const overlap = doc.slots.some((s) => {
+      if (s._id.equals(slotId)) return false;
+      return (
+        toMinutes(newStart) < toMinutes(s.endTime) &&
+        toMinutes(newEnd) > toMinutes(s.startTime)
+      );
     });
 
     if (overlap) {
       return res.status(409).json({
-        message: "Slot overlaps with an existing slot",
+        message: "Slot overlaps with another slot",
       });
     }
 
@@ -144,7 +152,7 @@ exports.updateSlot = async (req, res) => {
     if (isActive !== undefined) slot.isActive = isActive;
     slot.label = buildLabel(newStart, newEnd);
 
-    await slot.save();
+    await doc.save();
     res.json(slot);
   } catch (err) {
     console.error("Update Slot Error:", err);
@@ -153,19 +161,26 @@ exports.updateSlot = async (req, res) => {
 };
 
 /* ======================================================
-   DELETE SLOT (ADMIN)
-   DELETE /api/facility-slots/:id
+   DELETE SINGLE SLOT INSIDE FACILITY
+   DELETE /api/facility-slots/:facilityId/:slotId
 ====================================================== */
 exports.deleteSlot = async (req, res) => {
   try {
-    const slot = await FacilitySlot.findById(req.params.id);
+    const { facilityId, slotId } = req.params;
+
+    const doc = await FacilitySlot.findOne({ facilityId });
+    if (!doc) {
+      return res.status(404).json({ message: "Facility slots not found" });
+    }
+
+    const slot = doc.slots.id(slotId);
     if (!slot) {
       return res.status(404).json({ message: "Slot not found" });
     }
 
-    /* ❌ Prevent deleting slot with future bookings */
+    /* ❌ Prevent delete if booked */
     const hasBooking = await TurfRental.exists({
-      facilityId: slot.facilityId,
+      facilityId,
       startTime: slot.startTime,
       bookingStatus: { $ne: "cancelled" },
     });
@@ -176,7 +191,9 @@ exports.deleteSlot = async (req, res) => {
       });
     }
 
-    await slot.deleteOne();
+    slot.remove();
+    await doc.save();
+
     res.json({ message: "Slot deleted successfully" });
   } catch (err) {
     console.error("Delete Slot Error:", err);
