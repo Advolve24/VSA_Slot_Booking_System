@@ -26,12 +26,6 @@ const facilitySchema = new mongoose.Schema(
       },
     ],
 
-    images: [
-      {
-        type: String, // stored file path
-      },
-    ],
-
     status: {
       type: String,
       enum: ["active", "maintenance", "disabled"],

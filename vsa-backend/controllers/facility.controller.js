@@ -1,24 +1,4 @@
 const Facility = require("../models/Facility");
-const fs = require("fs");
-const path = require("path");
-
-/* ======================================================
-   HELPER: SAFE FILE DELETE
-====================================================== */
-const deleteFileSafe = (relativePath) => {
-  if (!relativePath) return;
-
-  // remove leading slash if exists
-  const cleanPath = relativePath.startsWith("/")
-    ? relativePath.slice(1)
-    : relativePath;
-
-  const filePath = path.join(__dirname, "..", cleanPath);
-
-  if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
-  }
-};
 
 /* ======================================================
    CREATE FACILITY (ADMIN)
@@ -40,19 +20,12 @@ exports.createFacility = async (req, res) => {
       });
     }
 
-    /* -------- images -------- */
-    const images =
-      req.files?.map(
-        (file) => `/uploads/facilities/${file.filename}`
-      ) || [];
-
     const facility = await Facility.create({
       name,
       type,
       hourlyRate,
       status: status || "active",
       sports,
-      images,
     });
 
     res.status(201).json(facility);
@@ -110,7 +83,7 @@ exports.updateFacility = async (req, res) => {
       return res.status(404).json({ message: "Facility not found" });
     }
 
-    const { name, type, hourlyRate, status, existingImages } = req.body;
+    const { name, type, hourlyRate, status } = req.body;
 
     /* -------- sports[] handling -------- */
     let sports = req.body.sports || req.body["sports[]"];
@@ -130,29 +103,6 @@ exports.updateFacility = async (req, res) => {
       facility.sports = sports;
     }
 
-    /* ================= IMAGE HANDLING ================= */
-    let keptImages = [];
-
-    if (existingImages) {
-      keptImages = JSON.parse(existingImages);
-
-      // delete removed images
-      facility.images.forEach((img) => {
-        if (!keptImages.includes(img)) {
-          deleteFileSafe(img);
-        }
-      });
-    } else {
-      keptImages = facility.images;
-    }
-
-    const newImages =
-      req.files?.map(
-        (file) => `/uploads/facilities/${file.filename}`
-      ) || [];
-
-    facility.images = [...keptImages, ...newImages];
-
     await facility.save();
     res.json(facility);
   } catch (err) {
@@ -171,11 +121,6 @@ exports.deleteFacility = async (req, res) => {
     if (!facility) {
       return res.status(404).json({ message: "Facility not found" });
     }
-
-    // delete all images from disk
-    facility.images.forEach((img) => {
-      deleteFileSafe(img);
-    });
 
     await facility.deleteOne();
 

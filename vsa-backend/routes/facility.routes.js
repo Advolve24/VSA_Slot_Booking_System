@@ -24,8 +24,8 @@ router.get("/:id/slots", getFacilitySlots);
 /* ======================================================
    ADMIN ROUTES
 ====================================================== */
-router.post("/", upload.array("images", 10), createFacility);
-router.put("/:id", upload.array("images", 10), updateFacility);
+router.post("/", createFacility);
+router.put("/:id", updateFacility);
 router.delete("/:id", deleteFacility);
 
 module.exports = router;
