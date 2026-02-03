@@ -20,7 +20,7 @@ const buildLabel = (start, end) => {
 };
 
 /* ======================================================
-   ADD / UPSERT MULTIPLE SLOTS FOR A FACILITY
+   UPSERT ALL SLOTS FOR A FACILITY (ADMIN)
    POST /api/facility-slots
 ====================================================== */
 exports.upsertFacilitySlots = async (req, res) => {
@@ -33,7 +33,7 @@ exports.upsertFacilitySlots = async (req, res) => {
       });
     }
 
-    // Prepare slots
+    /* -------- VALIDATE + PREPARE SLOTS -------- */
     const preparedSlots = slots.map((s) => {
       if (!s.startTime || !s.endTime) {
         throw new Error("startTime and endTime are required");
@@ -52,7 +52,7 @@ exports.upsertFacilitySlots = async (req, res) => {
       };
     });
 
-    /* ❌ Overlap check */
+    /* -------- OVERLAP CHECK (WITHIN PAYLOAD) -------- */
     const sorted = [...preparedSlots].sort(
       (a, b) => toMinutes(a.startTime) - toMinutes(b.startTime)
     );
@@ -68,6 +68,7 @@ exports.upsertFacilitySlots = async (req, res) => {
       }
     }
 
+    /* -------- UPSERT -------- */
     const doc = await FacilitySlot.findOneAndUpdate(
       { facilityId },
       { facilityId, slots: preparedSlots },
@@ -82,7 +83,7 @@ exports.upsertFacilitySlots = async (req, res) => {
 };
 
 /* ======================================================
-   GET SLOTS BY FACILITY
+   GET SLOTS FOR ONE FACILITY (ADMIN)
    GET /api/facility-slots?facilityId=xxx
 ====================================================== */
 exports.getSlotsByFacility = async (req, res) => {
@@ -96,10 +97,23 @@ exports.getSlotsByFacility = async (req, res) => {
     }
 
     const doc = await FacilitySlot.findOne({ facilityId });
-
     res.json(doc?.slots || []);
   } catch (err) {
     console.error("Get Slots Error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* ======================================================
+   GET ALL FACILITY SLOT DOCS (ADMIN TABLE)
+   GET /api/facility-slots/all
+====================================================== */
+exports.getAllFacilitySlots = async (req, res) => {
+  try {
+    const docs = await FacilitySlot.find({});
+    res.json(docs);
+  } catch (err) {
+    console.error("Get All Facility Slots Error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -132,7 +146,7 @@ exports.updateSlot = async (req, res) => {
       });
     }
 
-    /* ❌ Overlap check (exclude self) */
+    /* -------- OVERLAP CHECK (EXCLUDE SELF) -------- */
     const overlap = doc.slots.some((s) => {
       if (s._id.equals(slotId)) return false;
       return (
@@ -178,7 +192,7 @@ exports.deleteSlot = async (req, res) => {
       return res.status(404).json({ message: "Slot not found" });
     }
 
-    /* ❌ Prevent delete if booked */
+    /* -------- PREVENT DELETE IF BOOKED -------- */
     const hasBooking = await TurfRental.exists({
       facilityId,
       startTime: slot.startTime,
