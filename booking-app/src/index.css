@@ -73,3 +73,78 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+
+/* ================= CALENDAR GREEN THEME ================= */
+
+/* Selected date (single mode) */
+[data-selected-single="true"] {
+  background-color: #066629 !important; /* green-600 */
+  color: #ffffff !important;
+}
+
+/* Hover on selected */
+[data-selected-single="true"]:hover {
+  background-color: #0f7033 !important; /* green-700 */
+}
+
+/* Disabled dates */
+[data-disabled="true"] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ================= FORCE CALENDAR WIDTH ================= */
+.calendar-popover {
+  width: 360px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Allow month container to expand */
+.calendar-popover .rdp {
+  width: 100%;
+}
+
+/* Prevent months wrapper from shrinking */
+.calendar-popover .rdp-months {
+  width: 100%;
+  justify-content: center;
+}
+
+/* Make single month wider */
+.calendar-popover .rdp-month {
+  width: 100%;
+  min-width: 320px;   /* adjust if needed */
+}
+
+/* Ensure table spans full width */
+.calendar-popover table {
+  width: 100%;
+}
+
+.calendar-popover [data-outside="true"] {
+  visibility: hidden;
+}
+
+/* ================= MOBILE (≤ 640px) ================= */
+
+@media (max-width: 640px) {
+  .calendar-popover {
+    width: 100%;
+    max-width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .calendar-popover .rdp-month {
+    min-width: 100%;
+  }
+
+  /* Slightly smaller cells on mobile */
+  .calendar-popover .rdp {
+    --rdp-cell-size: 36px;
+    --rdp-caption-font-size: 15px;
+  }
+}

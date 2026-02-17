@@ -3,7 +3,7 @@ import { ShieldCheck, BadgeCheck, Trophy } from "lucide-react";
 
 export default function Footer() {
   return (
-    <footer className="border-t bg-white mt-8">
+    <footer className="border-t bg-white mt-2">
       <div className="max-w-6xl mx-auto px-4 py-6 text-center text-sm text-gray-600 space-y-3">
 
         <div className="flex flex-wrap justify-center items-center gap-6 text-xs text-gray-700">
