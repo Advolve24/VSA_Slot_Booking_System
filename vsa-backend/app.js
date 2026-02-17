@@ -32,7 +32,7 @@ app.use(
       "http://localhost:5173",
       "http://localhost:5174",
       "https://vsa-slot-booking-system.vercel.app",
-      "https://vsa-slot-admin-system.vercel.app",
+      "https://vsa-admin-system.vercel.app",
     ],
     credentials: true,
   })
