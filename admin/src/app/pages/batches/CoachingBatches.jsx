@@ -229,59 +229,59 @@ export default function CoachingBatches() {
   };
 
   const saveBatch = async () => {
-  try {
-    const payload = {
-      ...form,
-      capacity: Number(form.capacity),
-      monthlyFee: Number(form.monthlyFee),
-      hasQuarterly: !!form.hasQuarterly,
-      quarterlyMultiplier: form.hasQuarterly
-        ? Number(form.quarterlyMultiplier || 3)
-        : 3,
-    };
+    try {
+      const payload = {
+        ...form,
+        capacity: Number(form.capacity),
+        monthlyFee: Number(form.monthlyFee),
+        hasQuarterly: !!form.hasQuarterly,
+        quarterlyMultiplier: form.hasQuarterly
+          ? Number(form.quarterlyMultiplier || 3)
+          : 3,
+      };
 
-    if (drawer === "edit") {
-      if (slotAction === "deactivate") {
-        payload.slotAction = "deactivate";
-        delete payload.slotId;
-      }
+      if (drawer === "edit") {
+        if (slotAction === "deactivate") {
+          payload.slotAction = "deactivate";
+          delete payload.slotId;
+        }
 
-      if (slotAction === "activate") {
-        payload.slotAction = "activate";
+        if (slotAction === "activate") {
+          payload.slotAction = "activate";
+          if (!payload.slotId) {
+            return toast({
+              variant: "destructive",
+              title: "Slot required",
+            });
+          }
+        }
+
+        await api.put(`/batches/${selected._id}`, payload);
+      } else {
         if (!payload.slotId) {
           return toast({
             variant: "destructive",
             title: "Slot required",
           });
         }
+
+        await api.post("/batches", payload);
       }
 
-      await api.put(`/batches/${selected._id}`, payload);
-    } else {
-      if (!payload.slotId) {
-        return toast({
-          variant: "destructive",
-          title: "Slot required",
-        });
-      }
+      toast({
+        title: drawer === "add" ? "Batch added" : "Batch updated",
+      });
 
-      await api.post("/batches", payload);
+      setDrawer(null);
+      fetchAll();
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Action failed",
+        description: err.response?.data?.message || "Server error",
+      });
     }
-
-    toast({
-      title: drawer === "add" ? "Batch added" : "Batch updated",
-    });
-
-    setDrawer(null);
-    fetchAll();
-  } catch (err) {
-    toast({
-      variant: "destructive",
-      title: "Action failed",
-      description: err.response?.data?.message || "Server error",
-    });
-  }
-};
+  };
 
 
   const deleteBatch = async (id) => {
@@ -411,6 +411,11 @@ export default function CoachingBatches() {
                         No slot assigned
                       </div>
                     )}</td>
+                    {b.hasQuarterly && (
+                      <div className="text-xs text-blue-600 font-medium">
+                        Quarterly Enabled
+                      </div>
+                    )}
                     <td>{b.startDate ? new Date(b.startDate).toLocaleDateString() : "-"}</td>
                     <td><span className={`px-3 py-1 rounded-full text-[0.65rem] ${status.color}`}>{status.label}</span></td>
                     <td className="text-right pr-3">

@@ -26,7 +26,7 @@ import Reports from "./pages/reports/Reports";
 
 /* ================= INVOICE VIEW ================= */
 import EnrollmentInvoiceView from "./pages/invoice/EnrollmentInvoiceView";
-import TurfInvoiceView from "./pages/invoice/TurfInvoiceView";
+import TurfInvoiceView from "./pages/invoice/TurfInvoiceview";
 import Settings from "./pages/settings/Settings";
 
 export default function RoutesList() {
