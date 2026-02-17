@@ -267,7 +267,6 @@ export default function SignInModal({ open, onClose }) {
           </>
         )}
 
-        <div id="recaptcha-container" />
       </div>
     </div>
   );

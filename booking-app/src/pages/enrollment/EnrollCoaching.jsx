@@ -635,7 +635,6 @@ export default function EnrollCoaching() {
           Choose the sport and batch that best fits your child's training goals.
         </p>
       </div>
-      <div id="recaptcha-container"></div>
       {/* ================= SPORT + BATCH SELECTION ================= */}
       {!selectedBatch && (
         <>

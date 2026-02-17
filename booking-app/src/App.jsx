@@ -16,6 +16,7 @@ import ProtectedRoute from "@/app/ProtectedRoute";
 export default function App() {
   return (
     <BrowserRouter>
+      <div id="recaptcha-container"></div>
       <Routes>
 
         {/* Layout Wrapper */}
