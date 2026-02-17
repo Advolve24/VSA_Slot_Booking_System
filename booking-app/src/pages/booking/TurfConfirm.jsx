@@ -160,16 +160,44 @@ export default function TurfConfirm() {
   }, [otp]);
 
   const verifyOtp = async () => {
-    try {
-      await confirmResult.confirm(otp);
-      setPhoneVerified(true);
-      setOtpSent(false);
+  try {
+    await confirmResult.confirm(otp);
+
+    // 🔥 CHECK USER EXISTS
+    const res = await api.get(`/users/check-mobile/${form.mobile}`);
+
+    if (res.data.exists) {
+      // Fetch full user data
+      const userRes = await api.get(`/users/by-mobile/${form.mobile}`);
+
+      const existingUser = userRes.data;
+
+      setForm({
+        userName: existingUser.fullName || "",
+        email: existingUser.email || "",
+        mobile: existingUser.mobile || form.mobile,
+        notes: "",
+      });
+
+      setIsExistingUser(true);
+      toast({ title: "Welcome back 👋" });
+
+    } else {
+      setIsExistingUser(false);
       toast({ title: "Mobile verified ✅" });
-    } catch {
-      toast({ variant: "destructive", title: "Invalid OTP" });
-      setOtp("");
     }
-  };
+
+    setPhoneVerified(true);
+    setOtpSent(false);
+
+  } catch (err) {
+    toast({
+      variant: "destructive",
+      title: "Invalid OTP",
+    });
+    setOtp("");
+  }
+};
 
   /* ================= RAZORPAY ================= */
 
