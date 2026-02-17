@@ -83,7 +83,6 @@ const findOrCreatePlayerUser = async ({
 /* ======================================================
    CREATE ENROLLMENT (MULTI DISCOUNT SAFE VERSION)
 ====================================================== */
-
 exports.createEnrollment = async (req, res) => {
   try {
     const {
@@ -98,7 +97,7 @@ exports.createEnrollment = async (req, res) => {
       paymentMode = "razorpay",
       address,
       paymentStatus,
-      discountCodes = [],   // website coupons
+      discountCodes = [],   // coupon codes from website
       discounts = [],       // admin direct discounts
     } = req.body;
 
@@ -148,10 +147,13 @@ exports.createEnrollment = async (req, res) => {
     let totalDiscountAmount = 0;
     let appliedDiscounts = [];
 
-    /* ========= ADMIN DIRECT DISCOUNTS ========= */
-
+    /* ======================================================
+       1️⃣ ADMIN DIRECT DISCOUNTS
+    ====================================================== */
     if (source === "admin" && discounts.length > 0) {
+
       for (let d of discounts) {
+
         let discountValue =
           d.type === "percentage"
             ? (runningAmount * d.value) / 100
@@ -173,13 +175,14 @@ exports.createEnrollment = async (req, res) => {
       }
     }
 
-    /* ========= WEBSITE COUPON LOGIC ========= */
+    /* ======================================================
+       2️⃣ WEBSITE DISCOUNTS (AUTO + COUPON STACK SAFE)
+    ====================================================== */
+    else {
 
-    else if (discountCodes.length > 0) {
       const today = new Date();
 
-      const discountDocs = await Discount.find({
-        code: { $in: discountCodes },
+      const allDiscountDocs = await Discount.find({
         applicableFor: "enrollment",
         isActive: true,
         $or: [{ validFrom: null }, { validFrom: { $lte: today } }],
@@ -190,7 +193,37 @@ exports.createEnrollment = async (req, res) => {
         ],
       });
 
-      for (let discount of discountDocs) {
+      const applicableDiscounts = allDiscountDocs.filter((discount) => {
+
+        // Plan match
+        if (discount.planType && discount.planType !== planType)
+          return false;
+
+        // Sport match
+        if (
+          discount.sportId &&
+          String(discount.sportId) !== String(batch.sportId?._id)
+        )
+          return false;
+
+        // Batch match
+        if (
+          discount.batchId &&
+          String(discount.batchId) !== String(batch._id)
+        )
+          return false;
+
+        // If discount has code → must be in discountCodes
+        if (discount.code) {
+          return discountCodes.includes(discount.code);
+        }
+
+        // No code → auto discount
+        return true;
+      });
+
+      for (let discount of applicableDiscounts) {
+
         let discountValue =
           discount.type === "percentage"
             ? (runningAmount * discount.value) / 100
@@ -204,7 +237,7 @@ exports.createEnrollment = async (req, res) => {
         appliedDiscounts.push({
           discountId: discount._id,
           title: discount.title,
-          code: discount.code,
+          code: discount.code || null,
           type: discount.type,
           value: discount.value,
           discountAmount: Math.round(discountValue),
