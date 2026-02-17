@@ -1,4 +1,4 @@
-const Settings = require("../models/Settings");
+const Settings = require("../models/settings");
 
 /* GET SETTINGS */
 exports.getSettings = async (req, res) => {
