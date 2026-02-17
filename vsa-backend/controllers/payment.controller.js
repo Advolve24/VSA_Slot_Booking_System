@@ -5,7 +5,10 @@ const Enrollment = require("../models/Enrollment");
 const TurfRental = require("../models/TurfRental");
 const Batch = require("../models/Batch");
 const FacilitySlot = require("../models/FacilitySlot");
-const { sendEnrollmentMail, sendTurfBookingMail } = require("../utils/mailer");
+const {
+  sendEnrollmentMail,
+  sendTurfBookingMail,
+} = require("../utils/mailer");
 
 /* ======================================================
    CREATE RAZORPAY ORDER
@@ -14,25 +17,37 @@ exports.createOrder = async (req, res) => {
   try {
     const { purpose, enrollmentId, turfRentalId } = req.body;
 
+    if (!purpose) {
+      return res.status(400).json({ message: "Purpose required" });
+    }
+
     let amount = 0;
 
     /* ================= ENROLLMENT ================= */
     if (purpose === "enrollment") {
       const enrollment = await Enrollment.findById(enrollmentId);
+
       if (!enrollment)
         return res.status(404).json({ message: "Enrollment not found" });
 
-      // 🔥 USE FINAL AMOUNT
+      if (enrollment.paymentStatus === "paid") {
+        return res.status(400).json({ message: "Already paid" });
+      }
+
       amount = enrollment.finalAmount;
     }
 
     /* ================= TURF ================= */
     if (purpose === "turf") {
       const rental = await TurfRental.findById(turfRentalId);
+
       if (!rental)
         return res.status(404).json({ message: "Turf booking not found" });
 
-      // 🔥 USE FINAL AMOUNT
+      if (rental.paymentStatus === "paid") {
+        return res.status(400).json({ message: "Already paid" });
+      }
+
       amount = rental.finalAmount || rental.totalAmount;
     }
 
@@ -92,8 +107,13 @@ exports.verifyPayment = async (req, res) => {
     }
 
     const payment = await Payment.findById(paymentId);
+
     if (!payment)
       return res.status(404).json({ message: "Payment not found" });
+
+    if (payment.status === "paid") {
+      return res.json({ success: true });
+    }
 
     payment.status = "paid";
     payment.razorpayPaymentId = razorpay_payment_id;
@@ -150,20 +170,15 @@ exports.verifyPayment = async (req, res) => {
             batchName: enrollment.batchName,
             coachName: enrollment.coachName,
             planType: enrollment.planType,
-
             schedule: enrollment.batchId.schedule,
             slotTime,
-
             batchStartDate: enrollment.batchId.startDate,
             batchEndDate: enrollment.batchId.endDate,
-
             enrollmentStartDate: enrollment.startDate,
             enrollmentEndDate: enrollment.endDate,
-
             baseAmount: enrollment.baseAmount,
-            discountAmount: enrollment.discountAmount,
+            totalDiscountAmount: enrollment.totalDiscountAmount,
             finalAmount: enrollment.finalAmount,
-
             enrollmentId: enrollment._id,
           });
         }
@@ -178,29 +193,25 @@ exports.verifyPayment = async (req, res) => {
         payment.turfRentalId
       );
 
-      if (rental) {
+      if (rental && rental.paymentStatus !== "paid") {
         rental.paymentStatus = "paid";
         rental.paymentMode = "razorpay";
         rental.bookingStatus = "confirmed";
         await rental.save();
 
         if (rental.email) {
-          sendTurfBookingMail({
+          await sendTurfBookingMail({
             to: rental.email,
             userName: rental.userName,
             facilityName: rental.facilityName,
             sportName: rental.sportName,
             rentalDate: rental.rentalDate,
             slots: rental.slots,
-
             baseAmount: rental.baseAmount,
-            discountAmount: rental.discountAmount,
+            totalDiscountAmount: rental.totalDiscountAmount,
             finalAmount: rental.finalAmount || rental.totalAmount,
-
             bookingId: rental._id,
-          }).catch((err) =>
-            console.error("Turf Mail Error:", err)
-          );
+          });
         }
       }
     }
