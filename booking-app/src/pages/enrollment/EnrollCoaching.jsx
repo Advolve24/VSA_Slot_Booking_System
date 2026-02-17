@@ -730,7 +730,6 @@ export default function EnrollCoaching() {
                         <div className="flex flex-col sm:flex-row sm:items-center gap-4 w-full xl:w-auto">
 
                           {/* ================= PLAN TOGGLE ================= */}
-                          {/* ================= PLAN TOGGLE ================= */}
                           <div className="relative w-[200px] h-9 bg-gray-100 rounded-full p-1 flex items-center text-sm font-medium overflow-hidden">
 
                             {hasQuarterlyDiscount(b, selectedSport) ? (
