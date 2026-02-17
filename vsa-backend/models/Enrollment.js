@@ -2,11 +2,13 @@ const mongoose = require("mongoose");
 
 const enrollmentSchema = new mongoose.Schema(
   {
+    /* ================= USER LINK ================= */
     userId: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "User",
-  default: null,
-},
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
     /* ================= PLAYER SNAPSHOT ================= */
     playerName: {
       type: String,
@@ -30,6 +32,14 @@ const enrollmentSchema = new mongoose.Schema(
       lowercase: true,
     },
 
+    /* ================= ADDRESS SNAPSHOT ================= */
+    address: {
+      country: { type: String, default: "India" },
+      state: { type: String, default: "Maharashtra" },
+      city: { type: String, trim: true },
+      localAddress: { type: String, trim: true },
+    },
+
     /* ================= BATCH SNAPSHOT ================= */
     batchId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -37,25 +47,14 @@ const enrollmentSchema = new mongoose.Schema(
       required: true,
     },
 
-    batchName: {
-      type: String,
-      required: true,
-    },
-
-    sportName: {
-      type: String,
-      required: true,
-    },
-
-    coachName: {
-      type: String,
-      required: true,
-    },
+    batchName: { type: String, required: true },
+    sportName: { type: String, required: true },
+    coachName: { type: String, required: true },
 
     /* ================= PLAN ================= */
     planType: {
       type: String,
-      enum: ["monthly", "yearly"],
+      enum: ["monthly", "quarterly"],
       default: "monthly",
     },
 
@@ -64,26 +63,50 @@ const enrollmentSchema = new mongoose.Schema(
       required: true,
     },
 
-    startDate: {
-      type: Date,
-      required: true,
-    },
+    startDate: { type: Date, required: true },
+    endDate: { type: Date, required: true },
 
-    endDate: {
-      type: Date,
-      required: true,
-    },
-
-    /* ================= PAYMENT ================= */
+    /* ================= PAYMENT CALCULATION ================= */
     monthlyFee: {
       type: Number,
       required: true,
     },
 
-    totalAmount: {
+    baseAmount: {
       type: Number,
       required: true,
     },
+
+    /* ================= DISCOUNT STRUCTURE ================= */
+
+    discounts: [
+      {
+        discountId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Discount",
+        },
+        title: String, // Store title for invoice reference
+        code: String,  // Can be null (for auto discount)
+        type: {
+          type: String,
+          enum: ["percentage", "flat"],
+        },
+        value: Number,
+        discountAmount: Number,
+      },
+    ],
+
+    totalDiscountAmount: {
+      type: Number,
+      default: 0,
+    },
+
+    finalAmount: {
+      type: Number,
+      required: true,
+    },
+
+    /* ================= PAYMENT STATUS ================= */
 
     paymentMode: {
       type: String,
@@ -103,10 +126,11 @@ const enrollmentSchema = new mongoose.Schema(
       default: "active",
     },
 
-    renewedFrom: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Enrollment",
-      default: null,
+    /* ================= META ================= */
+    source: {
+      type: String,
+      enum: ["website", "admin"],
+      default: "website",
     },
   },
   { timestamps: true }

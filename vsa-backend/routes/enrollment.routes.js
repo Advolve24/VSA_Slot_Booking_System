@@ -12,6 +12,5 @@ router.get("/", auth, role(["admin"]), ctrl.getEnrollments);
 router.get("/:id", auth, role(["admin"]), ctrl.getEnrollmentById);
 router.put("/:id", auth, role(["admin"]), ctrl.updateEnrollment);
 router.delete("/:id", auth, role(["admin"]), ctrl.deleteEnrollment);
-router.post("/:id/renew", auth, role(["admin"]), ctrl.renewEnrollment);
 
 module.exports = router;

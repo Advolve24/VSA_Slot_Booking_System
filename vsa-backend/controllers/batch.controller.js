@@ -1,18 +1,16 @@
 const Batch = require("../models/Batch");
 const Sport = require("../models/Sport");
+const FacilitySlot = require("../models/FacilitySlot");
 
 /* ======================================================
-   GET ALL BATCHES
-   - Admin + Frontend
+   GET ALL BATCHES (ADMIN + FRONTEND)
 ====================================================== */
-const Enrollment = require("../models/Enrollment");
-
 exports.getBatches = async (req, res) => {
   try {
-    const isAdmin = req.user?.role === "admin";
+    const today = new Date();
 
     const batches = await Batch.aggregate([
-      /* ================= JOIN ENROLLMENTS ================= */
+      /* ================= ENROLLMENTS ================= */
       {
         $lookup: {
           from: "enrollments",
@@ -21,8 +19,6 @@ exports.getBatches = async (req, res) => {
           as: "enrollments",
         },
       },
-
-      /* ================= CALCULATE ENROLLED COUNT ================= */
       {
         $addFields: {
           enrolledCount: {
@@ -30,16 +26,14 @@ exports.getBatches = async (req, res) => {
               $filter: {
                 input: "$enrollments",
                 as: "e",
-                cond: {
-                  $in: ["$$e.status", ["active", "expiring"]],
-                },
+                cond: { $in: ["$$e.status", ["active", "expiring"]] },
               },
             },
           },
         },
       },
 
-      /* ================= JOIN SPORT ================= */
+      /* ================= SPORT ================= */
       {
         $lookup: {
           from: "sports",
@@ -54,38 +48,86 @@ exports.getBatches = async (req, res) => {
         },
       },
 
-      /* ================= CLEANUP ================= */
+      /* ================= SLOT ================= */
+      {
+        $lookup: {
+          from: "facilityslots",
+          localField: "facilityId",
+          foreignField: "facilityId",
+          as: "slotDoc",
+        },
+      },
+      {
+        $addFields: {
+          slotLabel: {
+            $let: {
+              vars: {
+                slotMaster: { $first: "$slotDoc" },
+              },
+              in: {
+                $first: {
+                  $map: {
+                    input: {
+                      $filter: {
+                        input: "$$slotMaster.slots",
+                        as: "s",
+                        cond: { $eq: ["$$s._id", "$slotId"] },
+                      },
+                    },
+                    as: "matched",
+                    in: "$$matched.label",
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+
+      {
+        $addFields: {
+          time: { $ifNull: ["$slotLabel", null] },
+        },
+      },
+
+      /* ================= STATUS ================= */
+      {
+        $addFields: {
+          status: {
+            $cond: [
+              { $lt: ["$endDate", today] },
+              "expired",
+              {
+                $cond: [
+                  { $gt: ["$startDate", today] },
+                  "upcoming",
+                  {
+                    $cond: [
+                      { $gte: ["$enrolledCount", "$capacity"] },
+                      "full",
+                      "active",
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+
       {
         $project: {
           enrollments: 0,
           sport: 0,
+          slotDoc: 0,
+          slotLabel: 0,
         },
       },
 
       { $sort: { createdAt: -1 } },
     ]);
 
-    res.json(
-      batches.map((b) => ({
-        _id: b._id,
-        name: b.name,
-        sportName: b.sportName || "-",
-        level: b.level,
-        coachName: b.coachName,
-        schedule: b.schedule,
-        time: b.time,
-        startDate: b.startDate,
-        endDate: b.endDate, // ✅ ALWAYS SEND
-        monthlyFee: b.monthlyFee,
-        capacity: b.capacity,
-        enrolledCount: b.enrolledCount,
-        status: b.status,
-        /* ✅ FINAL COUNT (pending NOT included) */
-        enrolledCount: b.enrolledCount,
-
-        status: b.status,
-      }))
-    );
+    res.json(batches);
   } catch (err) {
     console.error("Get Batches Error:", err);
     res.status(500).json({ message: "Failed to fetch batches" });
@@ -105,20 +147,24 @@ exports.getBatchById = async (req, res) => {
       return res.status(404).json({ message: "Batch not found" });
     }
 
+    let time = null;
+
+    if (batch.slotId) {
+      const slotDoc = await FacilitySlot.findOne({
+        facilityId: batch.facilityId,
+      });
+
+      const slot = slotDoc?.slots?.find(
+        (s) => String(s._id) === String(batch.slotId)
+      );
+
+      time = slot?.label || null;
+    }
+
     res.json({
-      _id: batch._id,
-      name: batch.name,
+      ...batch,
       sportName: batch.sportId?.name || "-",
-      level: batch.level,
-      coachName: batch.coachName,
-      schedule: batch.schedule,
-      time: batch.time,
-      startDate: batch.startDate,
-      endDate: batch.endDate,
-      monthlyFee: batch.monthlyFee,
-      capacity: batch.capacity,
-      enrolledCount: batch.enrolledCount || 0,
-      status: batch.status,
+      time,
     });
   } catch (err) {
     console.error("Get Batch Error:", err);
@@ -127,20 +173,48 @@ exports.getBatchById = async (req, res) => {
 };
 
 /* ======================================================
-   CREATE BATCH (sportName → sportId)
+   CREATE BATCH (FACILITY + SLOT REQUIRED)
 ====================================================== */
 exports.createBatch = async (req, res) => {
   try {
-    const { sportName, ...rest } = req.body;
+    const {
+      sportName,
+      facilityId,
+      slotId,
+      hasQuarterly,
+      quarterlyMultiplier,
+      ...rest
+    } = req.body;
+
+    if (!facilityId)
+      return res.status(400).json({ message: "facilityId required" });
+
+    if (!slotId)
+      return res.status(400).json({ message: "slotId required" });
 
     const sport = await Sport.findOne({ name: sportName });
-    if (!sport) {
-      return res.status(400).json({ message: "Invalid sport selected" });
-    }
+    if (!sport)
+      return res.status(400).json({ message: "Invalid sport" });
+
+    const slotDoc = await FacilitySlot.findOne({ facilityId });
+    if (!slotDoc)
+      return res.status(400).json({ message: "Facility slots not found" });
+
+    const slot = slotDoc.slots.id(slotId);
+    if (!slot || !slot.isActive)
+      return res.status(409).json({ message: "Slot not available" });
+
+    /* 🔒 LOCK SLOT */
+    slot.isActive = false;
+    await slotDoc.save();
 
     const batch = await Batch.create({
       ...rest,
       sportId: sport._id,
+      facilityId,
+      slotId,
+      hasQuarterly: hasQuarterly || false,
+      quarterlyMultiplier: quarterlyMultiplier || 3,
     });
 
     res.status(201).json(batch);
@@ -151,32 +225,83 @@ exports.createBatch = async (req, res) => {
 };
 
 /* ======================================================
-   UPDATE BATCH
+   UPDATE BATCH (ACTIVATE / DEACTIVATE SLOT)
 ====================================================== */
 exports.updateBatch = async (req, res) => {
   try {
-    const { sportName, ...rest } = req.body;
-    let updateData = { ...rest };
+    const {
+      sportName,
+      slotId,
+      slotAction,
+      hasQuarterly,
+      quarterlyMultiplier,
+      ...rest
+    } = req.body;
 
+    const batch = await Batch.findById(req.params.id);
+    if (!batch)
+      return res.status(404).json({ message: "Batch not found" });
+
+    const updateData = { ...rest };
+
+    /* ================= SPORT ================= */
     if (sportName) {
       const sport = await Sport.findOne({ name: sportName });
-      if (!sport) {
-        return res.status(400).json({ message: "Invalid sport selected" });
-      }
+      if (!sport)
+        return res.status(400).json({ message: "Invalid sport" });
       updateData.sportId = sport._id;
     }
 
-    const updated = await Batch.findByIdAndUpdate(
+    /* ================= QUARTERLY SETTINGS ================= */
+    if (hasQuarterly !== undefined)
+      updateData.hasQuarterly = hasQuarterly;
+
+    if (quarterlyMultiplier)
+      updateData.quarterlyMultiplier = quarterlyMultiplier;
+
+    /* ================= SLOT LOGIC ================= */
+    if (slotAction) {
+      const slotDoc = await FacilitySlot.findOne({
+        facilityId: batch.facilityId,
+      });
+
+      if (!slotDoc)
+        return res.status(400).json({ message: "Slots not found" });
+
+      if (slotAction === "deactivate" && batch.slotId) {
+        const oldSlot = slotDoc.slots.id(batch.slotId);
+        if (oldSlot) oldSlot.isActive = true;
+        await slotDoc.save();
+        updateData.slotId = null;
+      }
+
+      if (slotAction === "activate") {
+        if (!slotId)
+          return res.status(400).json({ message: "slotId required" });
+
+        if (batch.slotId) {
+          const oldSlot = slotDoc.slots.id(batch.slotId);
+          if (oldSlot) oldSlot.isActive = true;
+        }
+
+        const newSlot = slotDoc.slots.id(slotId);
+        if (!newSlot || !newSlot.isActive)
+          return res.status(409).json({ message: "Slot not available" });
+
+        newSlot.isActive = false;
+        await slotDoc.save();
+
+        updateData.slotId = slotId;
+      }
+    }
+
+    const updatedBatch = await Batch.findByIdAndUpdate(
       req.params.id,
       updateData,
       { new: true }
     );
 
-    if (!updated) {
-      return res.status(404).json({ message: "Batch not found" });
-    }
-
-    res.json(updated);
+    res.json(updatedBatch);
   } catch (err) {
     console.error("Update Batch Error:", err);
     res.status(400).json({ message: err.message });
@@ -184,9 +309,30 @@ exports.updateBatch = async (req, res) => {
 };
 
 /* ======================================================
-   DELETE
+   DELETE BATCH (RELEASE SLOT IF ANY)
 ====================================================== */
 exports.deleteBatch = async (req, res) => {
-  await Batch.findByIdAndDelete(req.params.id);
-  res.json({ success: true });
+  try {
+    const batch = await Batch.findById(req.params.id);
+    if (!batch)
+      return res.status(404).json({ message: "Batch not found" });
+
+    if (batch.slotId) {
+      const slotDoc = await FacilitySlot.findOne({
+        facilityId: batch.facilityId,
+      });
+
+      const slot = slotDoc?.slots?.id(batch.slotId);
+      if (slot) {
+        slot.isActive = true;
+        await slotDoc.save();
+      }
+    }
+
+    await batch.deleteOne();
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Delete Batch Error:", err);
+    res.status(500).json({ message: "Failed to delete batch" });
+  }
 };

@@ -3,98 +3,117 @@ const Facility = require("../models/Facility");
 const FacilitySlot = require("../models/FacilitySlot");
 const BlockedSlot = require("../models/BlockedSlot");
 const User = require("../models/User");
+const Discount = require("../models/Discount");
 
-/* ================= HELPERS ================= */
+/* ======================================================
+   UTIL
+====================================================== */
 
 const normalizeDate = (d) =>
   new Date(d).toISOString().slice(0, 10);
 
 /* ======================================================
-   CREATE TURF RENTAL (MULTI SLOT)
-   POST /api/turf-rentals
+   USER UPSERT
 ====================================================== */
+
+const findOrCreateRentalUser = async ({
+  userName,
+  phone,
+  email,
+  address,
+}) => {
+  let user = await User.findOne({
+    mobile: phone,
+    role: "player",
+  });
+
+  if (!user) {
+    return await User.create({
+      fullName: userName,
+      mobile: phone,
+      email,
+      role: "player",
+      address: address || {
+        country: "India",
+        state: "Maharashtra",
+      },
+      source: "turf",
+      memberSince: new Date(),
+    });
+  }
+
+  return user;
+};
+
+/* ======================================================
+   CREATE TURF RENTAL (MULTI-DISCOUNT VERSION)
+====================================================== */
+
 exports.createTurfRental = async (req, res) => {
   try {
     const {
-      source = "admin",
+      source = "website",
       userName,
       phone,
       email = "",
       notes = "",
+      address,
       facilityId,
       sportId,
       rentalDate,
-      slots, // ✅ ["07:00","08:00"]
-      paymentMode = "cash",
-      paymentStatus = "pending",
+      slots,
+      paymentMode = "razorpay",
+
+      // WEBSITE COUPONS
+      discountCodes = [],
+
+      // ADMIN DIRECT DISCOUNTS
+      discounts = [],
     } = req.body;
 
-    /* ================= VALIDATION ================= */
     if (
       !userName ||
       !phone ||
       !facilityId ||
       !sportId ||
       !rentalDate ||
-      !Array.isArray(slots) ||
-      slots.length === 0
+      !slots?.length
     ) {
-      return res.status(400).json({
-        message: "Missing required fields",
-      });
+      return res.status(400).json({ message: "Missing fields" });
     }
 
     const date = normalizeDate(rentalDate);
 
-    /* ================= FACILITY ================= */
+    /* ================= FACILITY VALIDATION ================= */
+
     const facility = await Facility.findById(facilityId).populate("sports");
 
-    if (!facility) {
-      return res.status(404).json({ message: "Facility not found" });
+    if (!facility || facility.status !== "active") {
+      return res.status(409).json({ message: "Facility unavailable" });
     }
 
-    if (facility.status !== "active") {
-      return res.status(409).json({
-        message: "Facility is not active",
-      });
-    }
-
-    /* ================= SPORT VALIDATION ================= */
     const allowedSport = facility.sports.find(
       (s) => s._id.toString() === sportId
     );
 
     if (!allowedSport) {
-      return res.status(400).json({
-        message: "This facility does not support the selected sport",
-      });
+      return res.status(400).json({ message: "Sport not allowed" });
     }
 
-    /* ================= SLOT DEFINITION ================= */
     const slotDoc = await FacilitySlot.findOne({ facilityId });
 
     if (!slotDoc) {
-      return res.status(409).json({
-        message: "No slots defined for this facility",
-      });
+      return res.status(409).json({ message: "Slots not defined" });
     }
 
     const activeSlots = slotDoc.slots
       .filter((s) => s.isActive)
       .map((s) => s.startTime);
 
-    const invalidSlots = slots.filter(
-      (t) => !activeSlots.includes(t)
-    );
-
-    if (invalidSlots.length) {
-      return res.status(409).json({
-        message: "Invalid slot(s) selected",
-        invalidSlots,
-      });
+    if (slots.some((s) => !activeSlots.includes(s))) {
+      return res.status(409).json({ message: "Invalid slot selected" });
     }
 
-    /* ================= BLOCKED SLOT CHECK ================= */
     const blocked = await BlockedSlot.findOne({
       facilityId,
       date,
@@ -102,55 +121,134 @@ exports.createTurfRental = async (req, res) => {
     });
 
     if (blocked) {
-      return res.status(409).json({
-        message: "One or more slots are blocked",
-      });
+      return res.status(409).json({ message: "Selected slot is blocked" });
     }
 
-    /* ================= OVERLAP CHECK (🔥 SIMPLE) ================= */
-    const alreadyBooked = await TurfRental.findOne({
+    const conflict = await TurfRental.findOne({
       facilityId,
       rentalDate: date,
       bookingStatus: { $ne: "cancelled" },
-      slots: { $in: slots }, // ✅ THIS IS THE MAGIC
+      slots: { $in: slots },
     });
 
-    if (alreadyBooked) {
-      return res.status(409).json({
-        message: "One or more slots already booked",
-      });
+    if (conflict) {
+      return res.status(409).json({ message: "Slot already booked" });
     }
 
-    /* ================= USER UPSERT ================= */
-    let user = await User.findOne({ mobile: phone });
+    /* ================= USER ================= */
 
-    if (!user) {
-      user = await User.create({
-        fullName: userName.trim(),
-        mobile: phone,
-        email,
-        role: "player",
-      });
-    }
+    const user = await findOrCreateRentalUser({
+      userName,
+      phone,
+      email,
+      address,
+    });
 
-    /* ================= PRICE ================= */
+    /* ================= AMOUNT CALCULATION ================= */
+
     const durationHours = slots.length;
     const hourlyRate = facility.hourlyRate;
     const baseAmount = hourlyRate * durationHours;
-    const taxAmount = 0;
-    const totalAmount = baseAmount;
 
-    const bookingStatus =
-      paymentStatus === "paid" ? "confirmed" : "pending";
+    let runningAmount = baseAmount;
+    let totalDiscountAmount = 0;
+    let appliedDiscounts = [];
 
-    /* ================= CREATE RENTAL ================= */
+    /* ======================================================
+       ADMIN DIRECT DISCOUNTS
+    ====================================================== */
+
+    if (source === "admin" && discounts.length > 0) {
+      for (let d of discounts) {
+        let discountValue =
+          d.type === "percentage"
+            ? (runningAmount * d.value) / 100
+            : d.value;
+
+        discountValue = Math.min(discountValue, runningAmount);
+
+        runningAmount -= discountValue;
+        totalDiscountAmount += discountValue;
+
+        appliedDiscounts.push({
+          discountId: d.discountId || null,
+          title: d.title || null,
+          code: d.code || null,
+          type: d.type,
+          value: d.value,
+          discountAmount: Math.round(discountValue),
+        });
+      }
+    }
+
+    /* ======================================================
+       WEBSITE COUPONS
+    ====================================================== */
+
+    else if (discountCodes.length > 0) {
+      const today = new Date();
+
+      const discountDocs = await Discount.find({
+        code: { $in: discountCodes },
+        applicableFor: "turf",
+        isActive: true,
+        $or: [{ validFrom: null }, { validFrom: { $lte: today } }],
+        $and: [
+          {
+            $or: [{ validTill: null }, { validTill: { $gte: today } }],
+          },
+        ],
+      });
+
+      for (let discount of discountDocs) {
+        let discountValue =
+          discount.type === "percentage"
+            ? (runningAmount * discount.value) / 100
+            : discount.value;
+
+        discountValue = Math.min(discountValue, runningAmount);
+
+        runningAmount -= discountValue;
+        totalDiscountAmount += discountValue;
+
+        appliedDiscounts.push({
+          discountId: discount._id,
+          title: discount.title,
+          code: discount.code,
+          type: discount.type,
+          value: discount.value,
+          discountAmount: Math.round(discountValue),
+        });
+      }
+    }
+
+    const finalAmount = Math.max(0, Math.round(runningAmount));
+
+    /* ================= PAYMENT LOGIC ================= */
+
+    let paymentStatus = "unpaid";
+    let bookingStatus = "pending";
+
+    if (source === "admin") {
+      paymentStatus = "paid";
+      bookingStatus = "confirmed";
+    }
+
+    /* ================= CREATE RECORD ================= */
+
     const rental = await TurfRental.create({
       source,
       userId: user._id,
+
       userName,
       phone,
       email,
       notes,
+
+      address: address || {
+        country: "India",
+        state: "Maharashtra",
+      },
 
       facilityId,
       facilityName: facility.name,
@@ -160,13 +258,14 @@ exports.createTurfRental = async (req, res) => {
       sportName: allowedSport.name,
 
       rentalDate: date,
-      slots, // ✅ STORE DIRECTLY
+      slots,
       durationHours,
-
       hourlyRate,
+
       baseAmount,
-      taxAmount,
-      totalAmount,
+      discounts: appliedDiscounts,
+      totalDiscountAmount: Math.round(totalDiscountAmount),
+      finalAmount,
 
       paymentMode,
       paymentStatus,
@@ -174,15 +273,17 @@ exports.createTurfRental = async (req, res) => {
     });
 
     res.status(201).json(rental);
+
   } catch (err) {
     console.error("Create TurfRental Error:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: err.message });
   }
 };
 
 /* ======================================================
    GET ALL TURF RENTALS
 ====================================================== */
+
 exports.getTurfRentals = async (req, res) => {
   try {
     const rentals = await TurfRental.find()
@@ -199,14 +300,23 @@ exports.getTurfRentals = async (req, res) => {
 /* ======================================================
    GET SINGLE TURF RENTAL
 ====================================================== */
+
 exports.getTurfRentalById = async (req, res) => {
   try {
     const rental = await TurfRental.findById(req.params.id)
-      .populate("facilityId", "name type status");
+      .populate("facilityId", "name type status")
+      .lean();
 
     if (!rental) {
-      return res.status(404).json({ message: "Turf rental not found" });
+      return res.status(404).json({
+        message: "Turf rental not found",
+      });
     }
+
+    rental.baseAmount = rental.baseAmount || 0;
+    rental.totalDiscountAmount = rental.totalDiscountAmount || 0;
+    rental.finalAmount = rental.finalAmount || 0;
+    rental.discounts = rental.discounts || [];
 
     res.json(rental);
   } catch (err) {
@@ -216,25 +326,58 @@ exports.getTurfRentalById = async (req, res) => {
 };
 
 /* ======================================================
-   UPDATE TURF RENTAL (NO SLOT CHANGE)
+   UPDATE TURF RENTAL
 ====================================================== */
+
 exports.updateTurfRental = async (req, res) => {
   try {
     const rental = await TurfRental.findById(req.params.id);
+
     if (!rental) {
-      return res.status(404).json({ message: "Turf rental not found" });
+      return res.status(404).json({
+        message: "Turf rental not found",
+      });
     }
 
     Object.assign(rental, req.body);
 
+    /* SLOT RECALC */
     if (req.body.slots) {
       rental.durationHours = req.body.slots.length;
       rental.baseAmount =
         rental.hourlyRate * rental.durationHours;
-      rental.totalAmount = rental.baseAmount;
+    }
+
+    /* DISCOUNT RECALC */
+    let runningTotal = rental.baseAmount;
+    let totalDiscountAmount = 0;
+
+    const discounts = rental.discounts || [];
+
+    discounts.forEach((d) => {
+      let discountValue =
+        d.type === "percentage"
+          ? (runningTotal * d.value) / 100
+          : d.value;
+
+      discountValue = Math.min(discountValue, runningTotal);
+
+      runningTotal -= discountValue;
+      totalDiscountAmount += discountValue;
+    });
+
+    rental.totalDiscountAmount = Math.round(totalDiscountAmount);
+    rental.finalAmount = Math.max(0, Math.round(runningTotal));
+
+    /* SYNC USER ADDRESS */
+    if (req.body.address && rental.userId) {
+      await User.findByIdAndUpdate(rental.userId, {
+        address: req.body.address,
+      });
     }
 
     await rental.save();
+
     res.json(rental);
   } catch (err) {
     console.error("Update TurfRental Error:", err);
@@ -245,17 +388,25 @@ exports.updateTurfRental = async (req, res) => {
 /* ======================================================
    CANCEL TURF RENTAL
 ====================================================== */
+
 exports.cancelTurfRental = async (req, res) => {
   try {
     const rental = await TurfRental.findById(req.params.id);
+
     if (!rental) {
-      return res.status(404).json({ message: "Turf rental not found" });
+      return res.status(404).json({
+        message: "Turf rental not found",
+      });
     }
 
     rental.bookingStatus = "cancelled";
+    rental.paymentStatus = "unpaid";
+
     await rental.save();
 
-    res.json({ message: "Booking cancelled successfully" });
+    res.json({
+      message: "Booking cancelled successfully",
+    });
   } catch (err) {
     console.error("Cancel TurfRental Error:", err);
     res.status(500).json({ message: "Server error" });
@@ -265,14 +416,20 @@ exports.cancelTurfRental = async (req, res) => {
 /* ======================================================
    DELETE TURF RENTAL
 ====================================================== */
+
 exports.deleteTurfRental = async (req, res) => {
   try {
     const rental = await TurfRental.findByIdAndDelete(req.params.id);
+
     if (!rental) {
-      return res.status(404).json({ message: "Turf rental not found" });
+      return res.status(404).json({
+        message: "Turf rental not found",
+      });
     }
 
-    res.json({ message: "Turf rental deleted successfully" });
+    res.json({
+      message: "Turf rental deleted successfully",
+    });
   } catch (err) {
     console.error("Delete TurfRental Error:", err);
     res.status(500).json({ message: "Server error" });

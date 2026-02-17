@@ -2,19 +2,33 @@ const mongoose = require("mongoose");
 
 const paymentSchema = new mongoose.Schema(
   {
-    bookingId: { type: mongoose.Schema.Types.ObjectId, ref: "Booking" },
-    enrollmentId: { type: mongoose.Schema.Types.ObjectId, ref: "Enrollment" },
-
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    razorpayOrderId: String,
+    razorpayPaymentId: String,
+    razorpaySignature: String,
 
     amount: Number,
-    method: String, // Razorpay, Cash
-    razorpayPaymentId: String,
+    currency: { type: String, default: "INR" },
+
+    purpose: {
+      type: String,
+      enum: ["enrollment", "turf"],
+      required: true,
+    },
+
+    enrollmentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Enrollment",
+    },
+
+    turfRentalId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "TurfRental",
+    },
 
     status: {
       type: String,
-      enum: ["success", "failed", "pending"],
-      default: "pending",
+      enum: ["created", "paid", "failed"],
+      default: "created",
     },
   },
   { timestamps: true }

@@ -1,4 +1,3 @@
-
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const { generateToken } = require("../config/jwt");
@@ -11,26 +10,27 @@ exports.adminLogin = async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ message: "Email & password required" });
+      return res.status(400).json({
+        message: "Email & password required",
+      });
     }
 
     const user = await User.findOne({
       email: email.toLowerCase(),
       role: "admin",
-    });
+    }).select("+password");
 
-    if (!user) {
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
-
-    if (!user.password) {
-      return res.status(401).json({ message: "Admin password not set" });
+    if (!user || !user.password) {
+      return res.status(401).json({
+        message: "Invalid credentials",
+      });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
-
     if (!isMatch) {
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json({
+        message: "Invalid credentials",
+      });
     }
 
     const token = generateToken(user);
@@ -52,40 +52,92 @@ exports.adminLogin = async (req, res) => {
 };
 
 /* ======================================================
+   PLAYER LOGIN (OTP ALREADY VERIFIED ON FRONTEND)
+   ❗ DOES NOT CREATE USER
+====================================================== */
+exports.playerLogin = async (req, res) => {
+  try {
+    const { mobile } = req.body;
+
+    console.log("LOGIN MOBILE:", mobile);
+
+    const user = await User.findOne({
+      mobile: mobile.toString(),
+      role: "player",
+    });
+
+    console.log("FOUND USER:", user);
+
+    if (!user) {
+      return res.json({ exists: false });
+    }
+
+    const token = generateToken(user);
+
+    res.json({
+      exists: true,
+      token,
+      user: {
+        id: user._id,
+        fullName: user.fullName,
+        mobile: user.mobile,
+        email: user.email,
+        age: user.age,
+        address: user.address,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    console.error("Player Login Error:", err);
+    res.status(500).json({ message: "Player login failed" });
+  }
+};
+
+/* ======================================================
    GET LOGGED-IN PROFILE
 ====================================================== */
 exports.getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
       .select("-password")
-      .populate("children")
       .lean();
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({
+        message: "User not found",
+      });
     }
 
     res.json(user);
   } catch (err) {
     console.error("Profile Fetch Error:", err);
-    res.status(500).json({ message: "Failed to fetch profile" });
+    res.status(500).json({
+      message: "Failed to fetch profile",
+    });
   }
 };
 
 /* ======================================================
-   CREATE FIRST ADMIN (USE ONCE)
+   CREATE FIRST ADMIN (RUN ONCE)
 ====================================================== */
 exports.createInitialAdmin = async (req, res) => {
   try {
     const { fullName, email, password } = req.body;
 
     if (!fullName || !email || !password) {
-      return res.status(400).json({ message: "All fields required" });
+      return res.status(400).json({
+        message: "All fields required",
+      });
     }
 
-    const exists = await User.findOne({ email: email.toLowerCase() });
+    const exists = await User.findOne({
+      email: email.toLowerCase(),
+    });
+
     if (exists) {
-      return res.status(400).json({ message: "Admin already exists" });
+      return res.status(400).json({
+        message: "Admin already exists",
+      });
     }
 
     const hashed = await bcrypt.hash(password, 10);
@@ -95,7 +147,6 @@ exports.createInitialAdmin = async (req, res) => {
       email: email.toLowerCase(),
       password: hashed,
       role: "admin",
-      // ⚠️ DO NOT ADD mobile
     });
 
     res.json({
@@ -107,7 +158,9 @@ exports.createInitialAdmin = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Error creating admin" });
+    console.error("Create Admin Error:", err);
+    res.status(500).json({
+      message: "Error creating admin",
+    });
   }
 };

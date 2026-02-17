@@ -1,210 +1,263 @@
 const Enrollment = require("../models/Enrollment");
 const Batch = require("../models/Batch");
 const User = require("../models/User");
+const { applyDiscount } = require("../utils/discountService");
+const Discount = require("../models/Discount");
 
+/* ======================================================
+   UTIL FUNCTIONS
+====================================================== */
 
-/* ================= UTIL ================= */
 const calculateEndDate = (startDate, months) => {
   const d = new Date(startDate);
   d.setMonth(d.getMonth() + months);
   return d;
 };
 
-const calculateEnrollmentStatus = (paymentStatus, endDate) => {
-  // Payment not completed → Pending enrollment
-  if (paymentStatus !== "paid") {
-    return "pending";
-  }
-
-  if (!endDate) {
-    return "active";
-  }
+const calculateEnrollmentStatus = (
+  paymentStatus,
+  enrollmentEndDate,
+  batchEndDate
+) => {
+  if (paymentStatus !== "paid") return "pending";
 
   const today = new Date();
-  const end = new Date(endDate);
+
+  const effectiveEndDate = batchEndDate
+    ? new Date(
+      Math.min(
+        new Date(enrollmentEndDate),
+        new Date(batchEndDate)
+      )
+    )
+    : new Date(enrollmentEndDate);
 
   const diffDays = Math.ceil(
-    (end - today) / (1000 * 60 * 60 * 24)
+    (effectiveEndDate - today) / (1000 * 60 * 60 * 24)
   );
 
   if (diffDays < 0) return "expired";
   if (diffDays <= 7) return "expiring";
-
   return "active";
 };
 
-/* ================= USER SYNC ================= */
-/* ================= USER FIND OR CREATE ================= */
+/* ======================================================
+   USER UPSERT
+====================================================== */
+
 const findOrCreatePlayerUser = async ({
   playerName,
   mobile,
   email,
   sportName,
+  address,
+  age,
 }) => {
-  if (!mobile && !email) {
-    throw new Error("Mobile or email required to identify player");
-  }
-
-  const query = {
-    role: "player",
-    $or: [],
-  };
+  const query = { role: "player", $or: [] };
 
   if (mobile) query.$or.push({ mobile });
   if (email) query.$or.push({ email });
 
   let user = await User.findOne(query);
 
-  /* ===== CREATE NEW PLAYER ===== */
   if (!user) {
-    user = await User.create({
+    return await User.create({
       fullName: playerName,
       mobile,
       email,
+      age,
       role: "player",
       sportsPlayed: sportName ? [sportName] : [],
+      address: address || {
+        country: "India",
+        state: "Maharashtra",
+      },
       memberSince: new Date(),
+      source: "enrollment",
     });
-
-    console.log("✅ Player user CREATED:", user._id);
-    return user;
-  }
-
-  /* ===== UPDATE EXISTING PLAYER (NON-DESTRUCTIVE) ===== */
-  const updates = {};
-
-  if (!user.fullName && playerName) {
-    updates.fullName = playerName;
-  }
-
-  if (
-    sportName &&
-    (!user.sportsPlayed || !user.sportsPlayed.includes(sportName))
-  ) {
-    updates.$addToSet = { sportsPlayed: sportName };
-  }
-
-  if (Object.keys(updates).length > 0) {
-    user = await User.findByIdAndUpdate(user._id, updates, {
-      new: true,
-    });
-    console.log("🔁 Player user UPDATED:", user._id);
   }
 
   return user;
 };
 
 /* ======================================================
-   CREATE ENROLLMENT
-   - Website (PUBLIC)
-   - Admin
+   CREATE ENROLLMENT (MULTI DISCOUNT SAFE VERSION)
 ====================================================== */
+
 exports.createEnrollment = async (req, res) => {
   try {
     const {
       source = "website",
-
       playerName,
       age,
       mobile,
       email,
-
       batchName,
       startDate,
       planType = "monthly",
-
-      paymentMode,
+      paymentMode = "razorpay",
+      address,
       paymentStatus,
+      discountCodes = [],   // website coupons
+      discounts = [],       // admin direct discounts
     } = req.body;
 
     if (!playerName || !age || !mobile || !batchName || !startDate) {
-      return res.status(400).json({ message: "Missing required fields" });
+      return res.status(400).json({ message: "Missing fields" });
     }
 
-    /* ================= FIND BATCH ================= */
     const batch = await Batch.findOne({ name: batchName }).populate(
       "sportId",
-      "name"
+      "name endDate"
     );
 
     if (!batch) {
-      return res.status(400).json({ message: "Invalid batch selected" });
+      return res.status(400).json({ message: "Invalid batch" });
     }
 
     if (batch.enrolledCount >= batch.capacity) {
       return res.status(400).json({ message: "Batch is full" });
     }
 
-    /* ================= DATES ================= */
-    const durationMonths = planType === "yearly" ? 12 : 1;
+    const durationMonths = planType === "quarterly" ? 3 : 1;
     const endDate = calculateEndDate(startDate, durationMonths);
-    const totalAmount = batch.monthlyFee * durationMonths;
+    const baseAmount = batch.monthlyFee * durationMonths;
 
-    /* ================= PAYMENT ================= */
-    let finalPaymentStatus = "unpaid";
-    let finalPaymentMode = paymentMode || null;
+    /* ================= USER UPSERT ================= */
 
-    if (source === "website") {
-      finalPaymentStatus =
-        paymentMode === "razorpay" ? "pending" : "unpaid";
-    }
-
-    if (source === "admin") {
-      finalPaymentStatus = paymentStatus || "unpaid";
-    }
-
-    /* ================= USER (FIND OR CREATE) ================= */
     const user = await findOrCreatePlayerUser({
       playerName,
       mobile,
       email,
+      age,
       sportName: batch.sportId?.name,
+      address,
     });
 
-    /* ================= ENROLLMENT STATUS ================= */
-    let enrollmentStatus = "active";
+    /* ================= REMOVE OLD UNPAID ================= */
 
-    if (finalPaymentStatus === "pending") {
-      enrollmentStatus = "pending";
+    await Enrollment.deleteMany({
+      userId: user._id,
+      batchId: batch._id,
+      paymentStatus: { $in: ["unpaid", "failed"] },
+    });
+
+    /* ================= APPLY DISCOUNTS ================= */
+
+    let runningAmount = baseAmount;
+    let totalDiscountAmount = 0;
+    let appliedDiscounts = [];
+
+    /* ========= ADMIN DIRECT DISCOUNTS ========= */
+
+    if (source === "admin" && discounts.length > 0) {
+      for (let d of discounts) {
+        let discountValue =
+          d.type === "percentage"
+            ? (runningAmount * d.value) / 100
+            : d.value;
+
+        discountValue = Math.min(discountValue, runningAmount);
+
+        runningAmount -= discountValue;
+        totalDiscountAmount += discountValue;
+
+        appliedDiscounts.push({
+          discountId: d.discountId || null,
+          title: d.title || null,
+          code: d.code || null,
+          type: d.type,
+          value: d.value,
+          discountAmount: Math.round(discountValue),
+        });
+      }
     }
 
-    /* ================= CREATE ================= */
+    /* ========= WEBSITE COUPON LOGIC ========= */
+
+    else if (discountCodes.length > 0) {
+      const today = new Date();
+
+      const discountDocs = await Discount.find({
+        code: { $in: discountCodes },
+        applicableFor: "enrollment",
+        isActive: true,
+        $or: [{ validFrom: null }, { validFrom: { $lte: today } }],
+        $and: [
+          {
+            $or: [{ validTill: null }, { validTill: { $gte: today } }],
+          },
+        ],
+      });
+
+      for (let discount of discountDocs) {
+        let discountValue =
+          discount.type === "percentage"
+            ? (runningAmount * discount.value) / 100
+            : discount.value;
+
+        discountValue = Math.min(discountValue, runningAmount);
+
+        runningAmount -= discountValue;
+        totalDiscountAmount += discountValue;
+
+        appliedDiscounts.push({
+          discountId: discount._id,
+          title: discount.title,
+          code: discount.code,
+          type: discount.type,
+          value: discount.value,
+          discountAmount: Math.round(discountValue),
+        });
+      }
+    }
+
+    const finalAmount = Math.max(0, Math.round(runningAmount));
+
+    /* ================= PAYMENT STATUS ================= */
+
+    const finalPaymentStatus =
+      paymentStatus ||
+      (paymentMode === "cash" ? "paid" : "unpaid");
+
+    const finalStatus = calculateEnrollmentStatus(
+      finalPaymentStatus,
+      endDate,
+      batch.endDate
+    );
+
+    /* ================= CREATE ENROLLMENT ================= */
+
     const enrollment = await Enrollment.create({
+      userId: user._id,
       playerName,
       age,
       mobile,
       email,
-
+      address,
       batchId: batch._id,
       batchName: batch.name,
       sportName: batch.sportId?.name,
       coachName: batch.coachName,
-
       planType,
       durationMonths,
       startDate,
       endDate,
-
       monthlyFee: batch.monthlyFee,
-      totalAmount,
-
-      paymentMode: finalPaymentMode,
+      baseAmount,
+      discounts: appliedDiscounts,
+      totalDiscountAmount: Math.round(totalDiscountAmount),
+      finalAmount,
+      paymentMode,
       paymentStatus: finalPaymentStatus,
-
-      status: enrollmentStatus,
+      status: finalStatus,
+      source,
     });
 
-    /* INCREMENT BATCH COUNT */
-    if (enrollmentStatus === "active") {
-      await Batch.findByIdAndUpdate(batch._id, {
-        $inc: { enrolledCount: 1 },
-      });
-    }
-
-
     res.status(201).json(enrollment);
+
   } catch (err) {
-    console.error("Create Enrollment Error:", err);
+    console.error("CREATE ENROLLMENT ERROR:", err);
     res.status(500).json({ message: err.message });
   }
 };
@@ -214,88 +267,228 @@ exports.createEnrollment = async (req, res) => {
 ====================================================== */
 exports.getEnrollments = async (req, res) => {
   try {
-    const enrollments = await Enrollment.find()
-      .sort({ createdAt: -1 })
+    const enrollments = await Enrollment.aggregate([
+      {
+        $lookup: {
+          from: "batches",
+          localField: "batchId",
+          foreignField: "_id",
+          as: "batch",
+        },
+      },
+      { $addFields: { batch: { $first: "$batch" } } },
+      { $sort: { createdAt: -1 } },
+    ]);
+
+    const final = enrollments.map((e) => {
+      const status = calculateEnrollmentStatus(
+        e.paymentStatus,
+        e.endDate,
+        e.batch?.endDate
+      );
+
+      return {
+        ...e,
+        status,
+        batchEnded:
+          e.batch?.endDate &&
+          new Date(e.batch.endDate) < new Date(),
+      };
+    });
+
+    res.json(final);
+
+  } catch (err) {
+    res.status(500).json({
+      message: "Failed to fetch enrollments",
+    });
+  }
+};
+
+/* ======================================================
+   GET SINGLE ENROLLMENT
+====================================================== */
+/* ======================================================
+   GET SINGLE ENROLLMENT (UPDATED WITH DISCOUNT DETAILS)
+====================================================== */
+
+exports.getEnrollmentById = async (req, res) => {
+  try {
+    const enrollment = await Enrollment.findById(req.params.id)
+      .populate("batchId", "endDate capacity enrolledCount")
       .lean();
 
-    res.json(enrollments);
+    if (!enrollment) {
+      return res.status(404).json({ message: "Not found" });
+    }
+
+    /* ================= RECALCULATE LIVE STATUS ================= */
+
+    const status = calculateEnrollmentStatus(
+      enrollment.paymentStatus,
+      enrollment.endDate,
+      enrollment.batchId?.endDate
+    );
+
+    /* ================= FORMAT RESPONSE ================= */
+
+    const response = {
+      ...enrollment,
+
+      // Ensure amounts are consistent
+      baseAmount: enrollment.baseAmount || 0,
+      totalDiscountAmount: enrollment.totalDiscountAmount || 0,
+      finalAmount: enrollment.finalAmount || 0,
+
+      // Return discount breakdown safely
+      discounts: enrollment.discounts || [],
+
+      // Live computed status
+      status,
+
+      batchEnded:
+        enrollment.batchId?.endDate &&
+        new Date(enrollment.batchId.endDate) < new Date(),
+    };
+
+    res.json(response);
+
   } catch (err) {
-    res.status(500).json({ message: "Failed to fetch enrollments" });
+    console.error("GET ENROLLMENT ERROR:", err);
+    res.status(500).json({ message: "Error fetching enrollment" });
   }
 };
 
-/* ======================================================
-   GET SINGLE ENROLLMENT (ADMIN)
-====================================================== */
-exports.getEnrollmentById = async (req, res) => {
-  const enrollment = await Enrollment.findById(req.params.id).lean();
-  if (!enrollment) {
-    return res.status(404).json({ message: "Enrollment not found" });
-  }
-  res.json(enrollment);
-};
 
 /* ======================================================
-   UPDATE ENROLLMENT (ADMIN)
-   - Handles batch change safely
+   UPDATE ENROLLMENT
 ====================================================== */
+/* ======================================================
+   UPDATE ENROLLMENT (FULLY UPDATED WITH MULTI DISCOUNT)
+====================================================== */
+
 exports.updateEnrollment = async (req, res) => {
   try {
     const old = await Enrollment.findById(req.params.id);
-    if (!old) {
-      return res.status(404).json({ message: "Enrollment not found" });
-    }
+    if (!old) return res.status(404).json({ message: "Not found" });
 
-    /* ================= BATCH CHANGE ================= */
+    let batch = await Batch.findById(old.batchId);
+
+    /* ======================================================
+       BATCH CHANGE
+    ====================================================== */
     if (
       req.body.batchId &&
-      req.body.batchId.toString() !== old.batchId.toString()
+      req.body.batchId !== old.batchId.toString()
     ) {
       const newBatch = await Batch.findById(req.body.batchId);
-      if (!newBatch) {
-        return res.status(400).json({ message: "Invalid new batch" });
-      }
+      if (!newBatch)
+        return res.status(400).json({ message: "Invalid batch" });
 
-      if (newBatch.enrolledCount >= newBatch.capacity) {
-        return res.status(400).json({ message: "New batch is full" });
-      }
-
+      // Decrease old batch count
       await Batch.findByIdAndUpdate(old.batchId, {
         $inc: { enrolledCount: -1 },
       });
 
+      // Increase new batch count
       await Batch.findByIdAndUpdate(req.body.batchId, {
         $inc: { enrolledCount: 1 },
       });
 
+      batch = newBatch;
+
       req.body.batchName = newBatch.name;
       req.body.coachName = newBatch.coachName;
+      req.body.sportName = newBatch.sportName;
     }
 
-    /* ================= RE-CALCULATE DATES ================= */
-    let endDate = old.endDate;
+    /* ======================================================
+       PLAN / DATE UPDATE
+    ====================================================== */
 
-    if (req.body.startDate || req.body.planType) {
-      const planType = req.body.planType || old.planType;
-      const startDate = req.body.startDate || old.startDate;
+    const planType = req.body.planType || old.planType;
+    const startDate = req.body.startDate || old.startDate;
 
-      const durationMonths = planType === "yearly" ? 12 : 1;
-      endDate = calculateEndDate(startDate, durationMonths);
+    const months = planType === "quarterly" ? 3 : 1;
 
-      req.body.endDate = endDate;
-      req.body.durationMonths = durationMonths;
-    }
+    const endDate = calculateEndDate(startDate, months);
 
-    /* ================= PAYMENT STATUS ================= */
-    const paymentStatus =
-      req.body.paymentStatus || old.paymentStatus;
+    req.body.planType = planType;
+    req.body.durationMonths = months;
+    req.body.startDate = startDate;
+    req.body.endDate = endDate;
+
+    /* ======================================================
+       RECALCULATE BASE AMOUNT
+    ====================================================== */
+
+    const monthlyFee = batch?.monthlyFee || old.monthlyFee;
+    const baseAmount = monthlyFee * months;
+
+    req.body.monthlyFee = monthlyFee;
+    req.body.baseAmount = baseAmount;
+
+    /* ======================================================
+       HANDLE MULTIPLE DISCOUNTS
+    ====================================================== */
+
+    let discounts = req.body.discounts || old.discounts || [];
+
+    let runningTotal = baseAmount;
+    let totalDiscountAmount = 0;
+
+    discounts.forEach((d) => {
+      if (d.type === "percentage") {
+        const discountValue = (runningTotal * d.value) / 100;
+        runningTotal -= discountValue;
+        totalDiscountAmount += discountValue;
+      } else {
+        runningTotal -= d.value;
+        totalDiscountAmount += d.value;
+      }
+    });
+
+    runningTotal = Math.max(0, Math.round(runningTotal));
+
+    req.body.discounts = discounts;
+    req.body.totalDiscountAmount = Math.round(totalDiscountAmount);
+    req.body.finalAmount = runningTotal;
+
+    /* ======================================================
+       PAYMENT STATUS
+    ====================================================== */
+
+    const updatedPaymentStatus =
+      req.body.paymentStatus !== undefined
+        ? req.body.paymentStatus
+        : old.paymentStatus;
+
+    req.body.paymentStatus = updatedPaymentStatus;
+
+    /* ======================================================
+       STATUS RECALCULATION
+    ====================================================== */
 
     req.body.status = calculateEnrollmentStatus(
-      paymentStatus,
-      endDate
+      updatedPaymentStatus,
+      endDate,
+      batch?.endDate
     );
 
-    /* ================= UPDATE ================= */
+    /* ======================================================
+       SYNC USER ADDRESS
+    ====================================================== */
+
+    if (req.body.address && old.userId) {
+      await User.findByIdAndUpdate(old.userId, {
+        address: req.body.address,
+      });
+    }
+
+    /* ======================================================
+       SAVE UPDATE
+    ====================================================== */
+
     const updated = await Enrollment.findByIdAndUpdate(
       req.params.id,
       req.body,
@@ -303,72 +496,33 @@ exports.updateEnrollment = async (req, res) => {
     );
 
     res.json(updated);
+
   } catch (err) {
-    console.error("Update Enrollment Error:", err);
+    console.error("UPDATE ENROLLMENT ERROR:", err);
     res.status(500).json({ message: err.message });
   }
 };
 
 /* ======================================================
-   RENEW ENROLLMENT (ADMIN)
-   - DOES NOT affect batch count
-====================================================== */
-exports.renewEnrollment = async (req, res) => {
-  try {
-    const old = await Enrollment.findById(req.params.id);
-    if (!old) {
-      return res.status(404).json({ message: "Enrollment not found" });
-    }
-
-    const durationMonths =
-      req.body.planType === "yearly" ? 12 : 1;
-
-    const startDate = old.endDate;
-    const endDate = calculateEndDate(startDate, durationMonths);
-
-    const renewed = await Enrollment.create({
-      ...old.toObject(),
-      _id: undefined,
-
-      planType: req.body.planType || "monthly",
-      durationMonths,
-      startDate,
-      endDate,
-      totalAmount: old.monthlyFee * durationMonths,
-
-      paymentMode: req.body.paymentMode,
-      paymentStatus: "paid",
-      status: "active",
-      renewedFrom: old._id,
-    });
-
-    old.status = "renewed";
-    await old.save();
-
-    res.json({ success: true, enrollment: renewed });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-/* ======================================================
-   DELETE ENROLLMENT (ADMIN)
-   - Decrements batch count
+   DELETE ENROLLMENT
 ====================================================== */
 exports.deleteEnrollment = async (req, res) => {
   try {
     const enrollment = await Enrollment.findById(req.params.id);
     if (!enrollment) {
-      return res.status(404).json({ message: "Enrollment not found" });
+      return res.status(404).json({ message: "Not found" });
     }
 
-    await Batch.findByIdAndUpdate(enrollment.batchId, {
-      $inc: { enrolledCount: -1 },
-    });
+    if (enrollment.status === "active") {
+      await Batch.findByIdAndUpdate(enrollment.batchId, {
+        $inc: { enrolledCount: -1 },
+      });
+    }
 
     await enrollment.deleteOne();
 
     res.json({ success: true });
+
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

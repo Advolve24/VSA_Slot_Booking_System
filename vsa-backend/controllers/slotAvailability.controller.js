@@ -3,16 +3,8 @@ const BlockedSlot = require("../models/BlockedSlot");
 const FacilitySlot = require("../models/FacilitySlot");
 const Facility = require("../models/Facility");
 
-/* ================= HELPERS ================= */
-
-const toMinutes = (time) => {
-  if (!time) return null;
-  const [h, m] = time.split(":").map(Number);
-  return h * 60 + m;
-};
-
 /* ======================================================
-   GET FACILITY SLOTS (USER / BOOKING SIDE)
+   GET FACILITY SLOTS (USER / ADMIN / BOOKING SIDE)
    GET /api/turf-rentals/facilities/:id/slots?date=YYYY-MM-DD
 ====================================================== */
 exports.getFacilitySlots = async (req, res) => {
@@ -32,27 +24,27 @@ exports.getFacilitySlots = async (req, res) => {
       return res.status(404).json({ message: "Facility not found" });
     }
 
-    /* 2️⃣ LOAD FACILITY SLOT DEFINITION */
+    /* 2️⃣ SLOT DEFINITIONS */
     const slotDoc = await FacilitySlot.findOne({ facilityId });
 
-    if (!slotDoc || !slotDoc.slots.length) {
-      return res.json([]); // no slots defined
+    if (!slotDoc || !slotDoc.slots?.length) {
+      return res.json([]);
     }
 
-    /* 🚫 FACILITY DISABLED / MAINTENANCE */
+    /* 🚫 FACILITY INACTIVE */
     if (["maintenance", "disabled"].includes(facility.status)) {
       return res.json(
         slotDoc.slots
           .filter((s) => s.isActive)
           .map((s) => ({
             time: s.startTime,
-            label: s.label,
+            label: s.label || s.startTime,
             status: "blocked",
           }))
       );
     }
 
-    /* 3️⃣ BLOCKED SLOTS FOR DATE */
+    /* 3️⃣ ADMIN BLOCKED SLOTS */
     const blockedDoc = await BlockedSlot.findOne({
       facilityId,
       date,
@@ -62,52 +54,45 @@ exports.getFacilitySlots = async (req, res) => {
       blockedDoc?.slots?.map((s) => s.startTime) || []
     );
 
-    /* 4️⃣ BOOKINGS FOR DATE */
+    /* 4️⃣ BOOKINGS FOR DATE (🔥 SLOT BASED) */
     const bookings = await TurfRental.find({
       facilityId,
       rentalDate: date,
       bookingStatus: { $ne: "cancelled" },
-    });
+    }).select("slots");
+
+    const bookedSet = new Set(
+      bookings.flatMap((b) => b.slots || [])
+    );
 
     /* 5️⃣ BUILD FINAL SLOT LIST */
     const result = slotDoc.slots
-      .filter((slot) => slot.isActive)
-      .sort(
-        (a, b) =>
-          toMinutes(a.startTime) - toMinutes(b.startTime)
-      )
+      .filter((s) => s.isActive)
       .map((slot) => {
-        const slotStart = toMinutes(slot.startTime);
-        const slotEnd = toMinutes(slot.endTime);
+        const time = slot.startTime;
 
-        /* 🔴 BLOCKED BY ADMIN */
-        if (blockedSet.has(slot.startTime)) {
+        /* 🔴 BLOCKED */
+        if (blockedSet.has(time)) {
           return {
-            time: slot.startTime,
-            label: slot.label,
+            time,
+            label: slot.label || time,
             status: "blocked",
           };
         }
 
         /* 🟠 BOOKED */
-        const isBooked = bookings.some((b) => {
-          const bStart = toMinutes(b.startTime);
-          const bEnd = toMinutes(b.endTime);
-          return bStart < slotEnd && bEnd > slotStart;
-        });
-
-        if (isBooked) {
+        if (bookedSet.has(time)) {
           return {
-            time: slot.startTime,
-            label: slot.label,
+            time,
+            label: slot.label || time,
             status: "booked",
           };
         }
 
         /* 🟢 AVAILABLE */
         return {
-          time: slot.startTime,
-          label: slot.label,
+          time,
+          label: slot.label || time,
           status: "available",
         };
       });

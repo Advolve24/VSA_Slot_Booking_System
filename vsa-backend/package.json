@@ -12,10 +12,12 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@sparticuz/chromium": "^143.0.4",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^1.41.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "express": "^4.22.1",
     "firebase-admin": "^13.6.0",
@@ -23,6 +25,8 @@
     "mongoose": "^9.0.1",
     "multer": "^2.0.2",
     "multer-storage-cloudinary": "^4.0.0",
+    "nodemailer": "^8.0.1",
+    "puppeteer": "^24.37.2",
     "razorpay": "^2.9.6"
   },
   "devDependencies": {

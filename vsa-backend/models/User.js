@@ -2,35 +2,74 @@ const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(
   {
-    fullName: { type: String, required: true },
+    /* ================= BASIC ================= */
+    fullName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
 
+    password: {
+      type: String,
+      required: function () {
+        return this.role === "admin";
+      },
+      select: false,
+    },
+
+    age: {
+      type: Number,
+      min: 1,
+      max: 100,
+    },
+
+    /* ================= CONTACT ================= */
     mobile: {
       type: String,
       unique: true,
-      sparse: true,   // allows admin/staff without mobile
+      sparse: true, // allows admin/staff without mobile
       default: undefined,
     },
 
-    email: { type: String },
+    email: {
+      type: String,
+      lowercase: true,
+      trim: true,
+    },
 
+    /* ================= ADDRESS (HUMAN READABLE) ================= */
+    address: {
+      country: {
+        type: String,
+        default: "India",
+      },
+      state: {
+        type: String,
+        default: "Maharashtra",
+      },
+      city: {
+        type: String,
+        trim: true,
+      },
+      localAddress: {
+        type: String,
+        trim: true,
+      },
+    },
+
+    /* ================= ROLE & AUTH ================= */
     role: {
       type: String,
       enum: ["player", "admin", "staff"],
       default: "player",
     },
 
-    // Used only for admin / staff login
-    password: String,
-
     profileImage: String,
-    address: String,
 
-    memberSince: { type: Date, default: Date.now },
-
-    // Player-related
+    /* ================= PLAYER DATA ================= */
     sportsPlayed: [String],
-    totalSessions: { type: Number, default: 0 },
 
+    /* ================= RELATIONS ================= */
     children: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -38,12 +77,16 @@ const userSchema = new mongoose.Schema(
       },
     ],
 
+    /* ================= META ================= */
+    source: {
+      type: String,
+      enum: ["enrollment", "turf", "admin"],
+      default: "enrollment",
+    },
 
-    // Notification Preferences
-    notificationPreferences: {
-      bookingUpdates: { type: Boolean, default: true },
-      announcements: { type: Boolean, default: true },
-      reminders: { type: Boolean, default: true },
+    memberSince: {
+      type: Date,
+      default: Date.now,
     },
   },
   { timestamps: true }

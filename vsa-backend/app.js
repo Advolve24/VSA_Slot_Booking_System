@@ -3,17 +3,23 @@ const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const path = require("path");
 
+// ROUTES
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
 const sportRoutes = require("./routes/sport.routes");
 const facilityRoutes = require("./routes/facility.routes");
 const batchRoutes = require("./routes/batch.routes");
 const enrollmentRoutes = require("./routes/enrollment.routes");
-const bookingRoutes = require("./routes/booking.routes");
 const paymentRoutes = require("./routes/payment.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
 const turfRentalRoutes = require("./routes/turfRental.routes");
-const facilitySlotRoutes= require("./routes/facilitySlot.routes");
+const facilitySlotRoutes = require("./routes/facilitySlot.routes");
+const reportsRoutes = require("./routes/reports.routes");
+const invoiceRoutes = require("./routes/invoice.routes");
+const settingsRoutes = require("./routes/settings.routes");
+const discountRoutes = require("./routes/discount.routes");
+
+
 
 const app = express();
 
@@ -24,7 +30,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:5173",
-      "http://localhost:5174", // admin local (if used)
+      "http://localhost:5174",
       "https://vsa-slot-booking-system.vercel.app",
       "https://vsa-slot-admin-system.vercel.app",
     ],
@@ -32,11 +38,13 @@ app.use(
   })
 );
 
-app.options("*", cors()); 
+app.options("*", cors());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 
+// -------------------------------------------
+// STATIC UPLOADS
 // -------------------------------------------
 app.use(
   "/uploads",
@@ -63,11 +71,14 @@ app.use("/api/sports", sportRoutes);
 app.use("/api/facilities", facilityRoutes);
 app.use("/api/batches", batchRoutes);
 app.use("/api/enrollments", enrollmentRoutes);
-app.use("/api/bookings", bookingRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/turf-rentals", turfRentalRoutes);
-app.use("/api/facility-slots",facilitySlotRoutes);
+app.use("/api/facility-slots", facilitySlotRoutes);
+app.use("/api/reports", reportsRoutes);
+app.use("/api/invoice", invoiceRoutes);
+app.use("/api/settings", settingsRoutes);
+app.use("/api/discounts", discountRoutes); 
 
 // -------------------------------------------
 // 404 HANDLER
