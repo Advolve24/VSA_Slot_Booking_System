@@ -10,7 +10,7 @@ export default function EnrollmentsLayout() {
       {/* HEADER */}
       <div className="flex items-center justify-between pb-4">
         <div>
-          <h1 className="text-3xl font-bold text-green-700">
+          <h1 className="text-2xl font-bold text-green-800">
             Enrollment Management
           </h1>
           <p className="text-muted-foreground">

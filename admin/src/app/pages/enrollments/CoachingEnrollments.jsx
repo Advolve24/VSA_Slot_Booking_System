@@ -1,45 +1,22 @@
 import { useEffect, useState, useMemo } from "react";
-
 import api from "@/lib/axios";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, MoreHorizontal } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
-
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { MoreHorizontal } from "lucide-react";
-
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem
-} from "@/components/ui/select";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { getMaharashtraCities } from "@/lib/location";
+import { useNavigate } from "react-router-dom";
 
 
 /* ================= CONSTANTS ================= */
-const PAYMENT_MODES = ["cash", "upi", "bank", "razorpay"];
-const PAYMENT_STATUS = ["paid", "unpaid", "pending"];
+const PAYMENT_MODES = ["cash", "upi"];
+const PAYMENT_STATUS = ["paid", "pending"];
 
 /* ================= UTIL ================= */
 const addMonths = (dateStr, months) => {
@@ -49,13 +26,186 @@ const addMonths = (dateStr, months) => {
   return d.toISOString().slice(0, 10);
 };
 
-
-
 /* ================= COMPONENT ================= */
 export default function CoachingEnrollment() {
-   const [page, setPage] = useState(1);
-  const ITEMS_PER_PAGE = 6;
+  const { toast } = useToast();
+  const ITEMS_PER_PAGE = 10;
+
+  const [page, setPage] = useState(1);
+  const [enrollments, setEnrollments] = useState([]);
+  const [batches, setBatches] = useState([]);
+  const [filters, setFilters] = useState({ sport: "", batch: "", coach: "", status: "" });
+  const [drawer, setDrawer] = useState(null); // add | view | edit
+  const [selected, setSelected] = useState(null);
+  const [discountCodeInput, setDiscountCodeInput] = useState("");
+  const [appliedDiscounts, setAppliedDiscounts] = useState([]);
+  const [discountsList, setDiscountsList] = useState([]);
+
+  const [form, setForm] = useState({
+    playerName: "",
+    age: "",
+    mobile: "",
+    email: "",
+
+    address: {
+      country: "India",
+      state: "Maharashtra",
+      city: "",
+      localAddress: "",
+    },
+
+    batchName: "",
+    coachName: "",
+    monthlyFee: "",
+    planType: "monthly",
+    startDate: "",
+    endDate: "",
+
+    baseAmount: 0,
+    totalDiscountAmount: 0,   // ✅ NEW
+    finalAmount: 0,           // ✅ IMPORTANT
+
+    paymentMode: "cash",
+    paymentStatus: "paid",
+  });
+
+
+  const normalize = (str = "") =>
+    str.trim().toLowerCase();
+
+  const findExistingPlayer = (name) => {
+    if (!name) return null;
+
+    return enrollments
+      .slice()
+      .reverse() // latest record first
+      .find(
+        (e) =>
+          normalize(e.playerName) === normalize(name)
+      );
+  };
+
+
+  /* ================= FETCH ================= */
+  const fetchAll = async () => {
+    try {
+      const [eRes, bRes, dRes] = await Promise.all([
+        api.get("/enrollments"),
+        api.get("/batches"),
+        api.get("/discounts"),
+      ]);
+
+      setEnrollments(eRes.data || []);
+      setBatches(bRes.data || []);
+      setDiscountsList(dRes.data || []);
+    } catch {
+      toast({
+        title: "Error",
+        description: "Failed to load data",
+        variant: "destructive",
+      });
+    }
+  };
+
+  useEffect(() => {
+    fetchAll();
+  }, []);
+
+  const recalculateAmounts = (discounts) => {
+    let runningTotal = form.baseAmount;
+    let totalDiscount = 0;
+
+    discounts.forEach((d) => {
+      let discountValue = 0;
+
+      if (d.type === "percentage") {
+        discountValue = (runningTotal * d.value) / 100;
+      } else {
+        discountValue = d.value;
+      }
+
+      runningTotal -= discountValue;
+      totalDiscount += discountValue;
+    });
+
+    const final = Math.max(0, Math.round(runningTotal));
+
+    setForm((prev) => ({
+      ...prev,
+      totalDiscountAmount: Math.round(totalDiscount),
+      finalAmount: final,
+    }));
+  };
+
+
+
+  useEffect(() => {
+    if (["cash", "upi"].includes(form.paymentMode)) {
+      setForm((prev) => ({
+        ...prev,
+        paymentStatus: "paid",
+      }));
+    }
+  }, [form.paymentMode]);
+
+  const [cities, setCities] = useState([]);
+
+  useEffect(() => {
+    setCities(getMaharashtraCities());
+  }, []);
+
+  const applyDiscountCode = () => {
+    if (!discountCodeInput) return;
+
+    const code = discountCodeInput.trim().toUpperCase();
+
+    const discount = discountsList.find(
+      (d) =>
+        d.code?.toUpperCase() === code &&
+        d.isActive &&
+        d.applicableFor === "enrollment"
+    );
+
+    if (!discount) {
+      toast({
+        title: "Invalid Code",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (appliedDiscounts.some((d) => d.code === discount.code)) {
+      toast({
+        title: "Already Applied",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newDiscounts = [...appliedDiscounts, discount];
+
+    recalculateAmounts(newDiscounts);
+
+    setAppliedDiscounts(newDiscounts);
+    setDiscountCodeInput("");
+  };
+
+  const removeDiscount = (code) => {
+    const updated = appliedDiscounts.filter(
+      (d) => d.code !== code
+    );
+
+    recalculateAmounts(updated);
+    setAppliedDiscounts(updated);
+  };
+
+
+  /* ================= DATE PICKER ================= */
   function DatePicker({ value, onChange, disabled }) {
+    // ✅ normalize today to 00:00
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     return (
       <Popover>
         <PopoverTrigger asChild>
@@ -73,9 +223,23 @@ export default function CoachingEnrollment() {
           <Calendar
             mode="single"
             selected={value ? new Date(value) : undefined}
-            onSelect={(date) =>
-              onChange(date ? format(date, "yyyy-MM-dd") : "")
-            }
+            onSelect={(date) => {
+              if (!date) return;
+
+              // normalize selected date
+              const d = new Date(date);
+              d.setHours(0, 0, 0, 0);
+
+              if (d < today) return; // ⛔ safety guard
+
+              onChange(format(d, "yyyy-MM-dd"));
+            }}
+            disabled={(date) => {
+              const d = new Date(date);
+              d.setHours(0, 0, 0, 0);
+
+              return d < today; // ⛔ disable past dates
+            }}
             initialFocus
             classNames={{
               day: "h-9 w-9 p-0 font-normal rounded-md transition-colors hover:bg-green-100 hover:text-green-900",
@@ -84,7 +248,7 @@ export default function CoachingEnrollment() {
               day_today:
                 "border border-green-600 text-green-700 font-semibold",
               day_outside: "text-muted-foreground opacity-50",
-              day_disabled: "text-muted-foreground opacity-30",
+              day_disabled: "text-muted-foreground opacity-30 cursor-not-allowed",
             }}
           />
         </PopoverContent>
@@ -93,95 +257,64 @@ export default function CoachingEnrollment() {
   }
 
 
-  const { toast } = useToast();
+  /* ================= MAP BACKEND → FORM ================= */
+  const mapEnrollmentToForm = (e) => {
+    return {
+      playerName: e.playerName,
+      age: e.age,
+      mobile: e.mobile,
+      email: e.email,
 
-  const [enrollments, setEnrollments] = useState([]);
-  const [batches, setBatches] = useState([]);
+      address: {
+        country: e.address?.country || "India",
+        state: e.address?.state || "Maharashtra",
+        city: e.address?.city || "",
+        localAddress: e.address?.localAddress || "",
+      },
 
-  const [filters, setFilters] = useState({
-    sport: "",
-    batch: "",
-    coach: "",
-    status: "",
-  });
+      batchName: e.batchName,
+      coachName: e.coachName,
+      monthlyFee: e.monthlyFee,
+      planType: e.planType || "monthly",
 
+      startDate: e.startDate?.slice(0, 10),
+      endDate: e.endDate?.slice(0, 10),
 
-  const [drawer, setDrawer] = useState(null); // add | view | edit
-  const [selected, setSelected] = useState(null);
+      baseAmount: e.baseAmount || 0,
+      totalDiscountAmount: e.totalDiscountAmount || 0,
+      finalAmount: e.finalAmount || 0,
 
-  const [form, setForm] = useState({
-    planType: "monthly",
-    paymentMode: "cash",
-    paymentStatus: "paid",
-  });
-
-  /* ================= FETCH ================= */
-  const fetchAll = async () => {
-    try {
-      const [eRes, bRes] = await Promise.all([
-        api.get("/enrollments"),
-        api.get("/batches"),
-      ]);
-
-      setEnrollments(eRes.data || []);
-      setBatches(bRes.data || []);
-    } catch {
-      toast({
-        title: "Error",
-        description: "Failed to load enrollments",
-        variant: "destructive",
-      });
-    }
+      paymentMode: e.paymentMode || "cash",
+      paymentStatus: e.paymentStatus || "unpaid",
+    };
   };
 
-  useEffect(() => {
-    fetchAll();
-  }, []);
-
-  /* ================= MAP BACKEND → FORM ================= */
-  const mapEnrollmentToForm = (e) => ({
-    playerName: e.playerName,
-    age: e.age,
-    mobile: e.mobile,
-    email: e.email,
-
-    batchName: e.batchName,
-    coachName: e.coachName,
-    monthlyFee: e.monthlyFee,
-
-    planType: e.planType || "monthly",
-    startDate: e.startDate?.slice(0, 10),
-    endDate: e.endDate?.slice(0, 10),
-    totalAmount: e.totalAmount,
-
-    paymentMode: e.paymentMode || "cash",
-    paymentStatus: e.paymentStatus || "unpaid",
-  });
-
-  const sports = [...new Set(enrollments.map(e => e.sportName).filter(Boolean))];
-  const batchOptions = [...new Set(
-    enrollments.map(e => e.batchName).filter(Boolean)
-  )];
-
-  const coaches = [...new Set(enrollments.map(e => e.coachName).filter(Boolean))];
-
+  const sports = [...new Set(enrollments.map((e) => e.sportName).filter(Boolean))];
+  const batchOptions = [...new Set(enrollments.map((e) => e.batchName).filter(Boolean))];
+  const coaches = [...new Set(enrollments.map((e) => e.coachName).filter(Boolean))];
 
   /* ================= ACTIONS ================= */
   const openAdd = () => {
     setForm({
       planType: "monthly",
       paymentMode: "cash",
-      paymentStatus: "paid",
+      paymentStatus: "paid", // default admin behavior
     });
     setSelected(null);
     setDrawer("add");
   };
 
+
   const openView = (e) => {
     setSelected(e);
     setForm(mapEnrollmentToForm(e));
+
+    // 🔥 IMPORTANT: load discount breakdown
+    setAppliedDiscounts(e.discounts || []);
+
     setDrawer("view");
   };
+
 
   const openEdit = (e) => {
     setSelected(e);
@@ -189,64 +322,80 @@ export default function CoachingEnrollment() {
     setDrawer("edit");
   };
 
-  /* ================= BATCH CHANGE ================= */
+  /* ================= BATCH & PLAN CHANGE ================= */
   const handleBatchChange = (batchName) => {
     const b = batches.find((x) => x.name === batchName);
     if (!b) return;
 
-    const months = form.planType === "yearly" ? 12 : 1;
+    const months = form.planType === "quarterly" ? 3 : 1;
+    const base = (b.monthlyFee || 0) * months;
 
-    setForm((p) => ({
-      ...p,
+    setAppliedDiscounts([]);
+
+    setForm((prev) => ({
+      ...prev,
       batchName: b.name,
       coachName: b.coachName,
       monthlyFee: b.monthlyFee,
-      endDate: addMonths(p.startDate, months),
-      totalAmount: b.monthlyFee * months,
+      baseAmount: base,
+      finalAmount: base,
+      totalDiscountAmount: 0,
+      endDate: addMonths(prev.startDate, months),
     }));
   };
 
-  /* ================= PLAN CHANGE ================= */
-  const handlePlanChange = (plan) => {
-    const months = plan === "yearly" ? 12 : 1;
 
-    setForm((p) => ({
-      ...p,
+  const handlePlanChange = (plan) => {
+    const b = batches.find((x) => x.name === form.batchName);
+    if (!b) return;
+
+    const months = plan === "quarterly" ? 3 : 1;
+    const base = (form.monthlyFee || 0) * months;
+
+    setAppliedDiscounts([]);
+
+    setForm((prev) => ({
+      ...prev,
       planType: plan,
-      endDate: addMonths(p.startDate, months),
-      totalAmount: p.monthlyFee ? p.monthlyFee * months : "",
+      baseAmount: base,
+      finalAmount: base,
+      totalDiscountAmount: 0,
+      endDate: addMonths(prev.startDate, months),
     }));
   };
 
   /* ================= SAVE ================= */
   const saveEnrollment = async () => {
     try {
+      const payload = {
+        ...form,
+        discounts: appliedDiscounts.map((d) => ({
+          discountId: d._id,
+          code: d.code,
+          title: d.title,
+          type: d.type,
+          value: d.value,
+        })),
+      };
+
       if (drawer === "add") {
         await api.post("/enrollments", {
           source: "admin",
-          ...form,
+          ...payload,
         });
-
-        toast({
-          title: "Enrollment Added",
-          description: "Player enrolled successfully",
-        });
+        toast({ title: "Enrollment Added" });
       } else {
-        await api.put(`/enrollments/${selected._id}`, form);
-
-        toast({
-          title: "Enrollment Updated",
-          description: "Changes saved successfully",
-        });
+        await api.put(`/enrollments/${selected._id}`, payload);
+        toast({ title: "Enrollment Updated" });
       }
 
       setDrawer(null);
       fetchAll();
+
     } catch (err) {
       toast({
         title: "Error",
-        description:
-          err.response?.data?.message || "Failed to save enrollment",
+        description: err.response?.data?.message || "Failed",
         variant: "destructive",
       });
     }
@@ -256,247 +405,135 @@ export default function CoachingEnrollment() {
   const deleteEnrollment = async (id) => {
     try {
       await api.delete(`/enrollments/${id}`);
-
-      toast({
-        title: "Deleted",
-        description: "Enrollment removed",
-      });
-
+      toast({ title: "Deleted", description: "Enrollment removed" });
       fetchAll();
     } catch {
-      toast({
-        title: "Error",
-        description: "Failed to delete enrollment",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to delete enrollment", variant: "destructive" });
     }
   };
 
+  /* ================= INVOICE HANDLER ================= */
+
+  const navigate = useNavigate();
+
+  const handleInvoiceAction = async (id, action) => {
+    if (action === "view") {
+      navigate(`/admin/invoice/${id}`);
+    }
+
+    if (action === "download") {
+      try {
+        const res = await api.get(
+          `/invoice/enrollment/${id}/download`,
+          { responseType: "blob" }
+        );
+
+        const blob = new Blob([res.data], {
+          type: "application/pdf",
+        });
+
+        const url = window.URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `Invoice-${id}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        window.URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error("Download error:", err);
+        toast({
+          title: "Error",
+          description: "Failed to download invoice",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+
+
+  /* ================= GET STATUS ================= */
   const getEnrollmentStatus = (e) => {
-    // 1️⃣ Pending payment = Pending enrollment
-    if (e.paymentStatus === "pending") {
-      return {
-        label: "Pending",
-        color: "bg-orange-100 text-orange-700",
-      };
-    }
+    if (e.paymentStatus !== "paid") return { label: "Pending", color: "bg-orange-100 text-orange-700" };
+    if (!e.endDate) return { label: "Active", color: "bg-green-100 text-green-700" };
 
-    // 2️⃣ Expired / Expiring logic (based on endDate)
-    if (!e.endDate) {
-      return {
-        label: "Active",
-        color: "bg-green-100 text-green-700",
-      };
-    }
-
-    const today = new Date();
-    const end = new Date(e.endDate);
-
-    const diffDays = Math.ceil(
-      (end - today) / (1000 * 60 * 60 * 24)
-    );
-
-    if (diffDays < 0) {
-      return {
-        label: "Expired",
-        color: "bg-gray-300 text-gray-800",
-      };
-    }
-
-    if (diffDays <= 7) {
-      return {
-        label: "Expiring",
-        color: "bg-yellow-100 text-yellow-700",
-      };
-    }
-
-    return {
-      label: "Active",
-      color: "bg-green-100 text-green-700",
-    };
+    const diffDays = Math.ceil((new Date(e.endDate) - new Date()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return { label: "Expired", color: "bg-gray-300 text-gray-800" };
+    if (diffDays <= 7) return { label: "Expiring", color: "bg-yellow-100 text-yellow-700" };
+    return { label: "Active", color: "bg-green-100 text-green-700" };
   };
 
-
-
+  /* ================= FILTER & PAGINATION ================= */
   const filteredEnrollments = useMemo(() => {
     return enrollments.filter((e) => {
       const statusLabel = getEnrollmentStatus(e).label;
-
-      return (
-        (!filters.sport || e.sportName === filters.sport) &&
+      return (!filters.sport || e.sportName === filters.sport) &&
         (!filters.batch || e.batchName === filters.batch) &&
         (!filters.coach || e.coachName === filters.coach) &&
-        (!filters.status || statusLabel === filters.status)
-      );
+        (!filters.status || statusLabel === filters.status);
     });
   }, [enrollments, filters]);
 
-  const totalPages = Math.ceil(
-    filteredEnrollments.length / ITEMS_PER_PAGE
-  );
+  const totalPages = Math.ceil(filteredEnrollments.length / ITEMS_PER_PAGE);
+  const paginatedEnrollments = filteredEnrollments.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
-  const paginatedEnrollments = filteredEnrollments.slice(
-    (page - 1) * ITEMS_PER_PAGE,
-    page * ITEMS_PER_PAGE
-  );
+  useEffect(() => setPage(1), [filters]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [filters]);
-
-
-
-  const filterTriggerClass =
-    "h-9 text-sm bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-green-600";
-
-  const selectTriggerClass =
-    "w-full h-10 text-sm bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-green-600";
-
-  const selectItemClass = `
-  cursor-pointer
-  transition-colors
-  data-[highlighted]:bg-green-100
-  data-[highlighted]:text-green-900
-  data-[state=checked]:bg-green-600
-  data-[state=checked]:text-white
-`;
-
-
-
+  const filterTriggerClass = "h-9 text-sm bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-green-600";
+  const selectTriggerClass = "w-full h-10 text-sm bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-green-600";
+  const selectItemClass = `cursor-pointer transition-colors data-[highlighted]:bg-green-100 data-[highlighted]:text-green-900 data-[state=checked]:bg-green-600 data-[state=checked]:text-white`;
 
   /* ================= UI ================= */
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-xl font-semibold">Coaching Enrollment Overview</h1>
-
-        <Button onClick={openAdd} className="bg-green-700">
-          + Add New Enrollment
-        </Button>
+        <h1 className="text-xl font-semibold"> Overview</h1>
+        <Button onClick={openAdd} className="bg-green-700">+ Add New Enrollment</Button>
       </div>
 
       {/* FILTERS */}
       <div className="bg-white border rounded-xl p-4 mb-4">
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-
-          <Select
-            value={filters.sport || "all"}
-            onValueChange={(value) =>
-              setFilters((p) => ({ ...p, sport: value === "all" ? "" : value }))
-            }
-          >
-            <SelectTrigger className={filterTriggerClass}>
-              <SelectValue placeholder="All Sports" />
-            </SelectTrigger>
-
-            <SelectContent
-              position="popper"
-              sideOffset={4}
-              className="z-[9999] bg-white border shadow-lg"
-            >
+          <Select value={filters.sport || "all"} onValueChange={(value) => setFilters((p) => ({ ...p, sport: value === "all" ? "" : value }))}>
+            <SelectTrigger className={filterTriggerClass}><SelectValue placeholder="All Sports" /></SelectTrigger>
+            <SelectContent position="popper" sideOffset={4} className="z-[9999] bg-white border shadow-lg">
               <SelectItem value="all" className={selectItemClass}>All Sports</SelectItem>
-              {sports.map((s) => (
-                <SelectItem key={s} value={s} className={selectItemClass}>
-                  {s}
-                </SelectItem>
-              ))}
+              {sports.map((s) => <SelectItem key={s} value={s} className={selectItemClass}>{s}</SelectItem>)}
             </SelectContent>
           </Select>
 
-
-          <Select
-            value={filters.batch || "all"}
-            onValueChange={(value) =>
-              setFilters((p) => ({ ...p, batch: value === "all" ? "" : value }))
-            }
-          >
-            <SelectTrigger className={filterTriggerClass}>
-              <SelectValue placeholder="All Batches" />
-            </SelectTrigger>
-
-            <SelectContent
-              position="popper"
-              sideOffset={4}
-              className="z-[9999] bg-white border shadow-lg"
-            >
+          <Select value={filters.batch || "all"} onValueChange={(value) => setFilters((p) => ({ ...p, batch: value === "all" ? "" : value }))}>
+            <SelectTrigger className={filterTriggerClass}><SelectValue placeholder="All Batches" /></SelectTrigger>
+            <SelectContent position="popper" sideOffset={4} className="z-[9999] bg-white border shadow-lg">
               <SelectItem value="all" className={selectItemClass}>All Batches</SelectItem>
-              {batchOptions.map((b) => (
-                <SelectItem key={b} value={b} className={selectItemClass}>
-                  {b}
-                </SelectItem>
-              ))}
+              {batchOptions.map((b) => <SelectItem key={b} value={b} className={selectItemClass}>{b}</SelectItem>)}
             </SelectContent>
           </Select>
 
-
-          <Select
-            value={filters.coach || "all"}
-            onValueChange={(value) =>
-              setFilters((p) => ({ ...p, coach: value === "all" ? "" : value }))
-            }
-          >
-            <SelectTrigger className={filterTriggerClass}>
-              <SelectValue placeholder="All Coaches" />
-            </SelectTrigger>
-
-            <SelectContent
-              position="popper"
-              sideOffset={4}
-              className="z-[9999] bg-white border shadow-lg"
-            >
+          <Select value={filters.coach || "all"} onValueChange={(value) => setFilters((p) => ({ ...p, coach: value === "all" ? "" : value }))}>
+            <SelectTrigger className={filterTriggerClass}><SelectValue placeholder="All Coaches" /></SelectTrigger>
+            <SelectContent position="popper" sideOffset={4} className="z-[9999] bg-white border shadow-lg">
               <SelectItem value="all" className={selectItemClass}>All Coaches</SelectItem>
-              {coaches.map((c) => (
-                <SelectItem key={c} value={c} className={selectItemClass}>
-                  {c}
-                </SelectItem>
-              ))}
+              {coaches.map((c) => <SelectItem key={c} value={c} className={selectItemClass}>{c}</SelectItem>)}
             </SelectContent>
           </Select>
 
-
-          <Select
-            value={filters.status || "all"}
-            onValueChange={(value) =>
-              setFilters((p) => ({
-                ...p,
-                status: value === "all" ? "" : value,
-              }))
-            }
-          >
-            <SelectTrigger className={filterTriggerClass}>
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-
-            <SelectContent
-              position="popper"
-              sideOffset={4}
-              className="z-[9999] bg-white border shadow-lg"
-            >
-              <SelectItem value="all" className={selectItemClass}>
-                All Status
-              </SelectItem>
-              <SelectItem value="Pending" className={selectItemClass}>
-                Pending
-              </SelectItem>
-              <SelectItem value="Active" className={selectItemClass}>
-                Active
-              </SelectItem>
-              <SelectItem value="Expiring" className={selectItemClass}>
-                Expiring
-              </SelectItem>
-              <SelectItem value="Expired" className={selectItemClass}>
-                Expired
-              </SelectItem>
+          <Select value={filters.status || "all"} onValueChange={(value) => setFilters((p) => ({ ...p, status: value === "all" ? "" : value }))}>
+            <SelectTrigger className={filterTriggerClass}><SelectValue placeholder="All Status" /></SelectTrigger>
+            <SelectContent position="popper" sideOffset={4} className="z-[9999] bg-white border shadow-lg">
+              <SelectItem value="all" className={selectItemClass}>All Status</SelectItem>
+              <SelectItem value="Pending" className={selectItemClass}>Pending</SelectItem>
+              <SelectItem value="Active" className={selectItemClass}>Active</SelectItem>
+              <SelectItem value="Expiring" className={selectItemClass}>Expiring</SelectItem>
+              <SelectItem value="Expired" className={selectItemClass}>Expired</SelectItem>
             </SelectContent>
           </Select>
-
-
-
         </div>
 
-
         {/* TABLE */}
-
         <div className="bg-white rounded-xl border mt-4 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 ">
@@ -510,29 +547,9 @@ export default function CoachingEnrollment() {
                 <th className="text-right pr-3">Action</th>
               </tr>
             </thead>
-
             <tbody>
               {paginatedEnrollments.map((e) => {
-                const status = (() => {
-                  if (e.status === "pending")
-                    return { label: "Pending", color: "bg-orange-100 text-orange-700" };
-                  if (e.status === "cancelled")
-                    return { label: "Cancelled", color: "bg-red-100 text-red-700" };
-                  if (!e.endDate)
-                    return { label: "-", color: "bg-gray-200 text-gray-700" };
-
-                  const diffDays = Math.ceil(
-                    (new Date(e.endDate) - new Date()) / (1000 * 60 * 60 * 24)
-                  );
-
-                  if (diffDays < 0)
-                    return { label: "Expired", color: "bg-gray-300 text-gray-800" };
-                  if (diffDays <= 7)
-                    return { label: "Expiring", color: "bg-yellow-100 text-yellow-700" };
-
-                  return { label: "Active", color: "bg-green-100 text-green-700" };
-                })();
-
+                const status = getEnrollmentStatus(e);
                 return (
                   <tr key={e._id} className="border-t">
                     <td className="p-3 font-medium">{e.playerName}</td>
@@ -541,26 +558,18 @@ export default function CoachingEnrollment() {
                     <td className="max-w-[220px] truncate">{e.batchName}</td>
                     <td>{e.startDate?.slice(0, 10)}</td>
                     <td>
-                      <span className={`px-3 py-1 rounded-full text-[0.65rem] ${status.color}`}>
-                        {status.label}
-                      </span>
+                      <span className={`px-3 py-1 rounded-full text-[0.65rem] ${status.color}`}>{status.label}</span>
                     </td>
                     <td className="text-right pr-3">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <button className="p-2 hover:bg-gray-100 rounded">
-                            <MoreHorizontal className="w-5 h-5" />
-                          </button>
+                          <button className="p-2 hover:bg-gray-100 rounded"><MoreHorizontal className="w-5 h-5" /></button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent>
+                        <DropdownMenuContent className="z-[9999] bg-white border shadow-lg align-end cursor-pointer">
                           <DropdownMenuItem onClick={() => openView(e)}>View</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openEdit(e)}>Edit</DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-red-600"
-                            onClick={() => deleteEnrollment(e._id)}
-                          >
-                            Delete
-                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleInvoiceAction(e._id, "view")}>  View Invoice </DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600" onClick={() => deleteEnrollment(e._id)}>Delete</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
@@ -569,245 +578,397 @@ export default function CoachingEnrollment() {
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* PAGINATION */}
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-sm text-muted-foreground">
+            Showing {(page - 1) * ITEMS_PER_PAGE + 1}–{Math.min(page * ITEMS_PER_PAGE, filteredEnrollments.length)} of {filteredEnrollments.length}
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(page - 1)}>Prev</Button>
+            {[...Array(totalPages)].map((_, i) => (
+              <Button key={i} size="sm" variant={page === i + 1 ? "default" : "outline"} onClick={() => setPage(i + 1)}>{i + 1}</Button>
+            ))}
+            <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage(page + 1)}>Next</Button>
           </div>
-               <div className="flex items-center justify-between mt-4">
-            <p className="text-sm text-muted-foreground">
-              Showing {(page - 1) * ITEMS_PER_PAGE + 1}–
-              {Math.min(page * ITEMS_PER_PAGE, filteredEnrollments.length)} of{" "}
-              {filteredEnrollments.length}
-            </p>
-
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page === 1}
-                onClick={() => setPage(page - 1)}
-              >
-                Prev
-              </Button>
-
-              {[...Array(totalPages)].map((_, i) => (
-                <Button
-                  key={i}
-                  size="sm"
-                  variant={page === i + 1 ? "default" : "outline"}
-                  onClick={() => setPage(i + 1)}
-                >
-                  {i + 1}
-                </Button>
-              ))}
-
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page === totalPages}
-                onClick={() => setPage(page + 1)}
-              >
-                Next
-              </Button>
-            </div>
         </div>
       </div>
 
-
-
       {/* DRAWER */}
       <Sheet open={!!drawer} onOpenChange={() => setDrawer(null)}>
-        <SheetContent side="right" className="w-[40vw]">
-          <SheetHeader>
-            <SheetTitle>
-              {drawer === "add"
-                ? "Add Enrollment"
-                : drawer === "edit"
-                  ? "Edit Enrollment"
-                  : "View Enrollment"}
-            </SheetTitle>
+        <SheetContent side="right" className="w-[30vw] h-screen flex flex-col">
+          <SheetHeader className="shrink-0">
+            <SheetTitle>{drawer === "add" ? "Add Enrollment" : drawer === "edit" ? "Edit Enrollment" : "View Enrollment"}</SheetTitle>
           </SheetHeader>
 
-          <div className="grid grid-cols-2 gap-4 mt-6">
-            {[
-              ["playerName", "Player Name"],
-              ["age", "Age"],
-              ["mobile", "Mobile"],
-              ["email", "Email"],
-            ].map(([key, label]) => (
-              <div key={key}>
-                <label className="text-sm font-medium">{label}</label>
+          <div className="flex-1 overflow-y-auto px-2">
+            <div className="grid grid-cols-2 gap-3">
+
+              {/* ================= PLAYER NAME (SMART) ================= */}
+              <div>
+                <label className="text-sm font-medium">Player Name</label>
                 <Input
+                  placeholder="Player Name"
                   disabled={drawer === "view"}
-                  value={form[key] || ""}
+                  value={form.playerName || ""}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    const existing = findExistingPlayer(name);
+
+                    if (existing) {
+                      setForm((prev) => ({
+                        ...prev,
+                        playerName: name,
+                        age: existing.age || "",
+                        mobile: existing.mobile || "",
+                        email: existing.email || "",
+                        address: {
+                          country: existing.address?.country || "India",
+                          state: existing.address?.state || "Maharashtra",
+                          city: existing.address?.city || "",
+                          localAddress: existing.address?.localAddress || "",
+                        },
+                      }));
+                    } else {
+                      setForm((prev) => ({
+                        ...prev,
+                        playerName: name,
+                      }));
+                    }
+                  }}
+                />
+
+                {findExistingPlayer(form.playerName) && (
+                  <p className="text-xs text-green-600 mt-1">
+                  </p>
+                )}
+              </div>
+
+              {/* ================= AGE ================= */}
+              <div>
+                <label className="text-sm font-medium">Age</label>
+                <Input
+                  placeholder="Age"
+                  disabled={drawer === "view"}
+                  value={form.age || ""}
                   onChange={(e) =>
-                    setForm({ ...form, [key]: e.target.value })
+                    setForm({ ...form, age: e.target.value })
                   }
                 />
               </div>
-            ))}
 
-            {/* Batch */}
-            <div className="col-span-2">
-              <label className="text-sm font-medium">Batch</label>
-              <Select
-                disabled={drawer === "view"}
-                value={form.batchName || ""}
-                onValueChange={(value) => handleBatchChange(value)}
-              >
-                <SelectTrigger className={selectTriggerClass}>
-                  <SelectValue placeholder="Select batch" />
-                </SelectTrigger>
-                <SelectContent
-                  position="popper"
-                  className="z-[9999] bg-white border shadow-lg"
+              {/* ================= MOBILE ================= */}
+              <div>
+                <label className="text-sm font-medium">Mobile</label>
+                <Input
+                  placeholder="Mobile"
+                  disabled={drawer === "view"}
+                  value={form.mobile || ""}
+                  onChange={(e) =>
+                    setForm({ ...form, mobile: e.target.value })
+                  }
+                />
+              </div>
+
+              {/* ================= EMAIL ================= */}
+              <div>
+                <label className="text-sm font-medium">Email</label>
+                <Input
+                  placeholder="Email"
+                  disabled={drawer === "view"}
+                  value={form.email || ""}
+                  onChange={(e) =>
+                    setForm({ ...form, email: e.target.value })
+                  }
+                />
+              </div>
+
+              {/* ================= CITY ================= */}
+              <div>
+                <label className="text-sm font-medium">City</label>
+                <Select
+                  disabled={drawer === "view"}
+                  value={form.address?.city || ""}
+                  onValueChange={(value) =>
+                    setForm({
+                      ...form,
+                      address: {
+                        ...form.address,
+                        city: value,
+                      },
+                    })
+                  }
                 >
-                  {batches.map((b) => (
-                    <SelectItem
-                      key={b._id}
-                      value={b.name}
-                      className={selectItemClass}
-                    >
-                      {b.name}
+                  <SelectTrigger className={selectTriggerClass}>
+                    <SelectValue placeholder="Select city" />
+                  </SelectTrigger>
+
+                  <SelectContent className="z-[9999] bg-white border shadow-lg max-h-64 overflow-auto">
+                    {cities.map((city) => (
+                      <SelectItem
+                        key={city}
+                        value={city}
+                        className={selectItemClass}
+                      >
+                        {city}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* ================= LOCAL ADDRESS ================= */}
+              <div className="col-span-2">
+                <label className="text-sm font-medium">Local Address</label>
+                <Input
+                  disabled={drawer === "view"}
+                  placeholder="Area / Street / Landmark"
+                  value={form.address?.localAddress || ""}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      address: {
+                        ...form.address,
+                        localAddress: e.target.value,
+                      },
+                    })
+                  }
+                />
+              </div>
+
+
+              {/* Batch */}
+              <div className="col-span-2">
+                <label className="text-sm font-medium">Batch</label>
+                <Select disabled={drawer === "view"} value={form.batchName || ""} onValueChange={(value) => handleBatchChange(value)}>
+                  <SelectTrigger className={selectTriggerClass}><SelectValue placeholder="Select batch" /></SelectTrigger>
+                  <SelectContent position="popper" className="z-[9999] bg-white border shadow-lg">
+                    {batches.map((b) => <SelectItem key={b._id} value={b.name} className={selectItemClass}>{b.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Plan */}
+              <div>
+                <label className="text-sm font-medium">Plan</label>
+                <Select disabled={drawer === "view"} value={form.planType} onValueChange={(value) => handlePlanChange(value)}>
+                  <SelectTrigger className={selectTriggerClass}><SelectValue /></SelectTrigger>
+                  <SelectContent position="popper" className="z-[9999] bg-white border shadow-lg">
+                    <SelectItem value="monthly" className={selectItemClass}>Monthly</SelectItem>
+                    {batches
+                      .find((b) => b.name === form.batchName)
+                      ?.hasQuarterly && (
+                        <SelectItem
+                          value="quarterly"
+                          className={selectItemClass}
+                        >
+                          Quarterly
+                        </SelectItem>
+                      )}
+
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Start Date */}
+              <div>
+                <label className="text-sm font-medium">Start Date</label>
+                <DatePicker
+                  disabled={drawer === "view"}
+                  value={form.startDate}
+                  onChange={(date) => {
+                    const b = batches.find((x) => x.name === form.batchName);
+                    const months =
+                      form.planType === "quarterly"
+                        ? b?.quarterlyMultiplier || 3
+                        : 1;
+
+                    setForm({
+                      ...form,
+                      startDate: date,
+                      endDate: addMonths(date, months),
+                    });
+                  }}
+                />
+              </div>
+              {/* Coach */}
+              <div>
+                <label className="text-sm font-medium">Coach</label>
+                <Input disabled value={form.coachName || ""} />
+              </div>
+
+              {/* Monthly Fee */}
+              <div>
+                <label className="text-sm font-medium">Monthly Fee</label>
+                <Input disabled value={form.monthlyFee || ""} />
+              </div>
+
+              {/* Payment Mode */}
+              <div>
+                <label className="text-sm font-medium">Payment Mode</label>
+                <Select
+                  disabled={drawer === "view"}
+                  value={form.paymentMode}
+                  onValueChange={(value) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      paymentMode: value,
+                      paymentStatus: "paid", // force paid
+                    }))
+                  }
+                >
+                  <SelectTrigger className={selectTriggerClass}>
+                    <SelectValue />
+                  </SelectTrigger>
+
+                  <SelectContent position="popper" className="z-[9999] bg-white border shadow-lg">
+                    {PAYMENT_MODES.map((p) => (
+                      <SelectItem key={p} value={p} className={selectItemClass}>
+                        {p.toUpperCase()}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+              </div>
+
+              {/* ================= PAYMENT STATUS ================= */}
+              <div>
+                <label className="text-sm font-medium">Payment Status</label>
+                <Select
+                  disabled={drawer === "view"}
+                  value={form.paymentStatus}
+                  onValueChange={(value) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      paymentStatus: value,
+                    }))
+                  }
+                >
+                  <SelectTrigger className={selectTriggerClass}>
+                    <SelectValue />
+                  </SelectTrigger>
+
+                  <SelectContent
+                    position="popper"
+                    className="z-[9999] bg-white border shadow-lg"
+                  >
+                    <SelectItem value="paid" className={selectItemClass}>
+                      PAID
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Plan */}
-            <div>
-              <label className="text-sm font-medium">Plan</label>
-              <Select
-                disabled={drawer === "view"}
-                value={form.planType}
-                onValueChange={(value) => handlePlanChange(value)}
-              >
-                <SelectTrigger className={selectTriggerClass}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent
-                  position="popper"
-                  className="z-[9999] bg-white border shadow-lg"
-                >
-                  <SelectItem value="monthly" className={selectItemClass}>
-                    Monthly
-                  </SelectItem>
-                  <SelectItem value="yearly" className={selectItemClass}>
-                    Yearly
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Start Date */}
-            <div>
-              <label className="text-sm font-medium">Start Date</label>
-              <DatePicker
-                disabled={drawer === "view"}
-                value={form.startDate}
-                onChange={(date) =>
-                  setForm({
-                    ...form,
-                    startDate: date,
-                    endDate: addMonths(
-                      date,
-                      form.planType === "yearly" ? 12 : 1
-                    ),
-                  })
-                }
-              />
-
-
-            </div>
-
-            {/* Coach */}
-            <div>
-              <label className="text-sm font-medium">Coach</label>
-              <Input disabled value={form.coachName || ""} />
-            </div>
-
-            {/* Monthly Fee */}
-            <div>
-              <label className="text-sm font-medium">Monthly Fee</label>
-              <Input disabled value={form.monthlyFee || ""} />
-            </div>
-
-            {/* Payment Mode */}
-            <div>
-              <label className="text-sm font-medium">Payment Mode</label>
-              <Select
-                disabled={drawer === "view"}
-                value={form.paymentMode}
-                onValueChange={(value) =>
-                  setForm({ ...form, paymentMode: value })
-                }
-              >
-                <SelectTrigger className={selectTriggerClass}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent
-                  position="popper"
-                  className="z-[9999] bg-white border shadow-lg"
-                >
-                  {PAYMENT_MODES.map((p) => (
-                    <SelectItem
-                      key={p}
-                      value={p}
-                      className={selectItemClass}
-                    >
-                      {p.toUpperCase()}
+                    <SelectItem value="unpaid" className={selectItemClass}>
+                      UNPAID
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                  </SelectContent>
+                </Select>
+              </div>
 
-            {/* Payment Status */}
-            <div>
-              <label className="text-sm font-medium">Payment Status</label>
-              <Select
-                disabled={drawer === "view"}
-                value={form.paymentStatus}
-                onValueChange={(value) =>
-                  setForm({ ...form, paymentStatus: value })
-                }
-              >
-                <SelectTrigger className={selectTriggerClass}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent
-                  position="popper"
-                  className="z-[9999] bg-white border shadow-lg"
-                >
-                  {PAYMENT_STATUS.map((p) => (
-                    <SelectItem
-                      key={p}
-                      value={p}
-                      className={selectItemClass}
+
+              {/* ================= TOTAL AMOUNT ================= */}
+              <div className="col-span-2">
+                <label className="text-sm font-medium">Total Amount</label>
+                <Input disabled value={`₹ ${form.finalAmount || 0}`} />
+              </div>
+
+
+              {/* ================= DISCOUNT SECTION ================= */}
+              <div className="col-span-2 space-y-3 mt-4">
+
+                <label className="text-sm font-medium">Discount Code</label>
+
+                {/* Apply Input (Hide in View Mode) */}
+                {drawer !== "view" && (
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Enter discount code"
+                      value={discountCodeInput}
+                      onChange={(e) =>
+                        setDiscountCodeInput(e.target.value.toUpperCase())
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={applyDiscountCode}
                     >
-                      {p.toUpperCase()}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                      Apply
+                    </Button>
+                  </div>
+                )}
 
-            {/* Total Amount */}
-            <div className="col-span-2">
-              <label className="text-sm font-medium">Total Amount</label>
-              <Input disabled value={form.totalAmount || ""} />
+                {/* Applied Discounts */}
+                {appliedDiscounts.length > 0 && (
+                  <div className="space-y-2 mt-3">
+
+                    {appliedDiscounts.map((d, index) => {
+
+                      const discountValue =
+                        d.type === "percentage"
+                          ? `${d.value}%`
+                          : `₹${d.value}`;
+
+                      return (
+                        <div
+                          key={index}
+                          className="flex justify-between items-center bg-green-50 border border-green-200 px-3 py-2 rounded-lg"
+                        >
+                          <div className="text-sm font-medium text-green-800">
+                            {d.title || "Discount"}{" "}
+                            {d.code ? `(${d.code})` : ""}{" "}
+                            ({discountValue})
+                          </div>
+
+                          {drawer !== "view" && (
+                            <button
+                              type="button"
+                              onClick={() => removeDiscount(d.code)}
+                              className="text-red-600 text-xs font-semibold hover:underline"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* Breakdown */}
+                    <div className="bg-gray-50 border rounded-lg p-3 text-sm space-y-2 mt-3">
+
+                      <div className="flex justify-between">
+                        <span>Base Amount</span>
+                        <span>₹ {form.baseAmount}</span>
+                      </div>
+
+                      <div className="flex justify-between text-red-600">
+                        <span>Total Discount</span>
+                        <span>- ₹ {form.totalDiscountAmount || 0}</span>
+                      </div>
+
+                      <div className="flex justify-between font-semibold text-green-700 pt-2 border-t">
+                        <span>Final Amount</span>
+                        <span>₹ {form.finalAmount}</span>
+                      </div>
+
+                    </div>
+
+                  </div>
+                )}
+
+              </div>
+
+
+
+
             </div>
           </div>
-
           {drawer !== "view" && (
-            <Button
-              className="mt-6 w-full bg-green-700"
-              onClick={saveEnrollment}
-            >
+            <Button className="mt-2 w-full bg-green-700" onClick={saveEnrollment}>
               {drawer === "add" ? "Add Enrollment" : "Update Enrollment"}
             </Button>
           )}
         </SheetContent>
       </Sheet>
-
     </div>
   );
 }

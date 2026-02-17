@@ -7,24 +7,23 @@ export default function StatsCards({ stats, loading }) {
       title: "Total Enrollments",
       value: stats?.totalEnrollments ?? 0,
       icon: Users,
-      cardBg: "bg-green-50",
+      cardBg: "bg-green-50/70",
       iconBg: "bg-green-200",
       iconColor: "text-green-700",
-      trend: stats?.enrollmentGrowth, // optional %
     },
     {
       title: "Active Enrollments",
       value: stats?.activeEnrollments ?? 0,
       icon: Activity,
-      cardBg: "bg-emerald-50",
+      cardBg: "bg-emerald-50/70",
       iconBg: "bg-emerald-200",
       iconColor: "text-emerald-700",
     },
     {
-      title: "Today's Bookings",
-      value: stats?.todayBookings ?? 0,
+      title: "Today's Turf Rentals",
+      value: stats?.todaysTurfRentals ?? 0,
       icon: Calendar,
-      cardBg: "bg-orange-50",
+      cardBg: "bg-orange-50/80",
       iconBg: "bg-orange-200",
       iconColor: "text-orange-700",
     },
@@ -32,10 +31,12 @@ export default function StatsCards({ stats, loading }) {
       title: "Monthly Revenue",
       value: `₹${stats?.monthlyRevenue ?? 0}`,
       icon: IndianRupee,
-      cardBg: "bg-yellow-50",
+      cardBg: "bg-yellow-50/80",
       iconBg: "bg-yellow-200",
       iconColor: "text-yellow-700",
-      trend: stats?.revenueGrowth,
+      subText: stats?.revenueBreakup
+        ? `Coaching ₹${stats.revenueBreakup.enrollments} • Turf ₹${stats.revenueBreakup.turfRentals}`
+        : null,
     },
   ];
 
@@ -47,6 +48,7 @@ export default function StatsCards({ stats, loading }) {
           className={`${card.cardBg} border-none rounded-xl transition-all hover:shadow-lg`}
         >
           <CardContent className="p-6 flex items-center justify-between">
+            {/* LEFT */}
             <div>
               <p className="text-sm text-muted-foreground font-medium">
                 {card.title}
@@ -56,13 +58,14 @@ export default function StatsCards({ stats, loading }) {
                 {loading ? "—" : card.value}
               </h2>
 
-              {card.trend !== undefined && (
-                <p className="text-xs text-green-600 mt-1 font-medium">
-                  ↑ {card.trend}% from last month
+              {card.subText && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {card.subText}
                 </p>
               )}
             </div>
 
+            {/* RIGHT ICON */}
             <div
               className={`w-12 h-12 rounded-xl flex items-center justify-center ${card.iconBg}`}
             >

@@ -20,27 +20,29 @@ body {
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 47.4% 11.2%;
+    --foreground: 222 47% 11%;
 
-    --primary: 142 72% 29%; /* VSA Green */
-    --primary-foreground: 355 100% 97%;
+    /* VSA PRIMARY GREEN (MATCH IMAGE) */
+    --primary: 145 74% 26%;        /* ≈ #0F6B2E */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 25 94% 52%; /* VSA Orange */
+    /* VSA ORANGE */
+    --secondary: 28 92% 55%;       /* ≈ #F28C28 */
     --secondary-foreground: 0 0% 100%;
 
+    /* CARD COLORS */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 47.4% 11.2%;
+    --card-foreground: 222 47% 11%;
 
+    /* MUTED / BORDER */
     --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted-foreground: 215 16% 47%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 142 72% 29%;
-
-    --radius: 0.6rem;
+    --ring: 145 74% 26%;
+    --radius: 0.75rem;
   }
-
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;

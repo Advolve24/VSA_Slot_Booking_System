@@ -21,52 +21,69 @@ import FacilitiesPage from "./pages/facilities/FacilitiesPage";
 /* ================= TURF RENTALS ================= */
 import TurfRentals from "./pages/turf-rental/TurfRentals";
 
+/* ================= REPORTS ================= */
+import Reports from "./pages/reports/Reports";
+
+/* ================= INVOICE VIEW ================= */
+import EnrollmentInvoiceView from "./pages/invoice/EnrollmentInvoiceView";
+import TurfInvoiceView from "./pages/invoice/TurfInvoiceView";
+import Settings from "./pages/settings/Settings";
+
 export default function RoutesList() {
   const { isAuthenticated, loading } = useAuth();
 
-  if (loading) return null; // or a Loader component
+  if (loading) return null;
 
   return (
     <Routes>
       {/* ================= AUTH ================= */}
       <Route path="/admin/login" element={<AdminLogin />} />
 
-      {/* ================= ADMIN ================= */}
+      {/* ================= ADMIN PROTECTED ================= */}
       <Route
         path="/admin"
         element={
-          isAuthenticated ? <AdminLayout /> : <Navigate to="/admin/login" />
+          isAuthenticated ? (
+            <AdminLayout />
+          ) : (
+            <Navigate to="/admin/login" />
+          )
         }
       >
         {/* DASHBOARD */}
         <Route index element={<AdminDashboard />} />
 
-        {/* ENROLLMENTS */}
+        {/* ================= ENROLLMENTS ================= */}
         <Route path="enrollments" element={<EnrollmentsLayout />}>
           <Route index element={<CoachingEnrollments />} />
           <Route path="coaching" element={<CoachingEnrollments />} />
         </Route>
+         <Route
+            path="invoice/:id"
+            element={<EnrollmentInvoiceView />}
+          />
 
-        {/* SPORTS */}
+        {/* ================= SPORTS ================= */}
         <Route path="sports" element={<SportsPage />} />
 
-        {/* COACHING BATCHES */}
+        {/* ================= COACHING BATCHES ================= */}
         <Route path="batches" element={<CoachingBatches />} />
 
-        {/* FACILITIES (TAB VIEW: Facilities + Blocked Slots) */}
+        {/* ================= FACILITIES ================= */}
         <Route path="facilities" element={<FacilitiesPage />} />
 
-        {/* BOOKINGS (PLACEHOLDER) */}
-        <Route path="bookings" element={<div>Bookings</div>} />
-
-        {/* TURF RENTALS */}
+        {/* ================= TURF RENTALS ================= */}
         <Route path="turf-rentals" element={<TurfRentals />} />
+        <Route
+          path="turf-rentals/invoice/:id"
+          element={<TurfInvoiceView />}
+        />
 
-        {/* REPORTS */}
-        <Route path="reports" element={<div>Reports</div>} />
+        {/* ================= REPORTS ================= */}
+        <Route path="reports" element={<Reports />} />
 
         {/* SETTINGS */}
-        <Route path="settings" element={<div>Settings</div>} />
+        <Route path="settings" element={<Settings />} />
       </Route>
 
       {/* ================= FALLBACK ================= */}

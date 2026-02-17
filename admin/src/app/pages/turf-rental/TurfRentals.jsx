@@ -1,49 +1,60 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useMemo } from "react";
 import api from "@/lib/axios";
-import { Plus, MoreVertical, X, CalendarIcon } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Plus, MoreVertical, X, CalendarIcon, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
+import { getMaharashtraCities } from "@/lib/location";
 
 /* ================= PAYMENT STATUS ================= */
-const PAYMENT_STATUS_STYLES = {
-    paid: "bg-green-100 text-green-700",
-    pending: "bg-orange-100 text-orange-700",
-    unpaid: "bg-red-100 text-red-700",
+const PAYMENT_STATUS_STYLES = { paid: "bg-green-100 text-green-700", pending: "bg-orange-100 text-orange-700", unpaid: "bg-red-100 text-red-700" };
+
+const getSlotRange = (slots = []) => {
+    if (!slots.length) return "";
+    const sorted = [...slots].sort();
+    const start = formatTime12h(sorted[0]);
+    const [h, m] = sorted[sorted.length - 1].split(":").map(Number);
+    const endHour = h + 1; // slots are hourly
+    const end = formatTime12h(
+        `${endHour.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`
+    );
+    return `${start} – ${end}`;
+};
+/* ================= FORMAT HELPERS ================= */
+const formatDateDMY = (date) => {
+    if (!date) return "—";
+    return format(new Date(date), "dd-MM-yyyy");
 };
 
-/* ================= SLOT STYLES ================= */
-const SLOT_STYLES = {
-    available: "border-green-300 bg-green-50 text-green-700",
-    booked: "border-red-300 bg-red-50 text-red-400 cursor-not-allowed",
-    blocked: "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed",
-    selected: "border-green-700 bg-green-700 text-white",
+const formatTime12h = (time) => {
+    if (!time) return "";
+
+    const [h, m] = time.split(":").map(Number);
+    const hour12 = h % 12 || 12;
+    const suffix = h >= 12 ? "PM" : "AM";
+
+    return `${hour12}:${m.toString().padStart(2, "0")} ${suffix}`;
 };
+
 
 export default function TurfRentals() {
-    const { toast } = useToast();
+    const navigate = useNavigate();
 
+    const ITEMS_PER_PAGE = 3; // change to 3/10 if needed
+    const { toast } = useToast();
     /* ================= DATA ================= */
     const [rentals, setRentals] = useState([]);
     const [facilities, setFacilities] = useState([]);
     const [sports, setSports] = useState([]);
     const [slots, setSlots] = useState([]);
-
+    const [page, setPage] = useState(1);
     /* ================= UI ================= */
     const [drawer, setDrawer] = useState(null); // add | view | edit
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -51,23 +62,57 @@ export default function TurfRentals() {
     const [selected, setSelected] = useState(null);
     const [dateOpen, setDateOpen] = useState(false);
     const menuRef = useRef(null);
-
     const [hourlyRate, setHourlyRate] = useState(0);
+    const [discountCode, setDiscountCode] = useState("");
+    const [availableDiscounts, setAvailableDiscounts] = useState([]);
 
+    /* ================= FILTERS ================= */
+    const [filters, setFilters] = useState({ sport: "all", facility: "all", status: "all" });
     /* ================= FORM ================= */
     const [form, setForm] = useState({
         userName: "",
         phone: "",
+        email: "",
+
         facilityId: "",
-        sport: "",
+        facilityName: "",
+
+        sportId: "",
+        sportName: "",
+
         rentalDate: null,
-        selectedSlots: [],
+        slots: [],
+
         paymentStatus: "pending",
         paymentMode: "cash",
-        totalAmount: 0,
+
+        /* ================= AMOUNT FIELDS ================= */
+        hourlyRate: 0,
+        baseAmount: 0,
+        totalDiscountAmount: 0,
+        finalAmount: 0,
+
+        /* ================= DISCOUNT ================= */
+        discountCodes: [],
+        discounts: [],
+
+        /* ================= ADDRESS ================= */
+        address: {
+            country: "India",
+            state: "Maharashtra",
+            city: "",
+            localAddress: "",
+        },
     });
 
-    /* 🔥 SET HOURLY RATE WHEN FACILITY CHANGES */
+    const selectedFacility = useMemo(
+        () => facilities.find((f) => f._id === form.facilityId),
+        [form.facilityId, facilities]
+    );
+    const allowedSports = selectedFacility?.sports || [];
+
+    const cities = useMemo(() => getMaharashtraCities(), []);
+
     useEffect(() => {
         if (!form.facilityId) return;
 
@@ -75,15 +120,38 @@ export default function TurfRentals() {
         if (f?.hourlyRate) setHourlyRate(f.hourlyRate);
     }, [form.facilityId, facilities]);
 
-    /* 💰 AUTO CALCULATE TOTAL */
-    useEffect(() => {
-        if (!hourlyRate) return;
+   useEffect(() => {
+    if (drawer === "view") return;   // ✅ STOP recalculation in view mode
+    if (!hourlyRate) return;
 
-        setForm(prev => ({
-            ...prev,
-            totalAmount: prev.selectedSlots.length * hourlyRate,
-        }));
-    }, [form.selectedSlots, hourlyRate]);
+    const baseAmount = form.slots.length * hourlyRate;
+
+    let discountAmount = 0;
+
+    const selectedDiscount = availableDiscounts.find(
+        (d) => d.code === discountCode
+    );
+
+    if (selectedDiscount) {
+        if (selectedDiscount.type === "percentage") {
+            discountAmount = (baseAmount * selectedDiscount.value) / 100;
+        } else {
+            discountAmount = selectedDiscount.value;
+        }
+    }
+
+    const finalAmount = baseAmount - discountAmount;
+
+    setForm((prev) => ({
+        ...prev,
+        baseAmount,
+        totalDiscountAmount: discountAmount,
+        finalAmount,
+    }));
+}, [form.slots, hourlyRate, discountCode, availableDiscounts, drawer]);
+
+    
+
 
     useEffect(() => {
         const handleClickOutside = (e) => {
@@ -91,35 +159,35 @@ export default function TurfRentals() {
                 setMenu(null);
             }
         };
-
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
-
-
     /* ================= LOAD DATA ================= */
     const loadRentals = async () => {
         const res = await api.get("/turf-rentals");
         setRentals(res.data);
     };
-
     const loadFacilities = async () => {
         const res = await api.get("/facilities");
         setFacilities(res.data.filter((f) => f.status === "active"));
     };
-
     const loadSports = async () => {
         const res = await api.get("/sports");
         setSports(res.data);
     };
-
     useEffect(() => {
         loadRentals();
         loadFacilities();
         loadSports();
     }, []);
 
-
+    useEffect(() => {
+        const loadDiscounts = async () => {
+            const res = await api.get("/discounts?type=turf");
+            setAvailableDiscounts(res.data || []);
+        };
+        loadDiscounts();
+    }, []);
 
     /* ================= SLOTS ================= */
     const loadSlots = async (facilityId, date) => {
@@ -129,69 +197,95 @@ export default function TurfRentals() {
         );
         setSlots(res.data);
     };
-
     const toggleSlot = (slot) => {
         if (slot.status !== "available") return;
-
-        setForm(prev => {
-            const updated = prev.selectedSlots.includes(slot.time)
-                ? prev.selectedSlots.filter(t => t !== slot.time)
-                : [...prev.selectedSlots, slot.time];
-
+        setForm((prev) => {
+            const exists = prev.slots.includes(slot.time);
             return {
                 ...prev,
-                selectedSlots: updated,
+                slots: exists
+                    ? prev.slots.filter((t) => t !== slot.time)
+                    : [...prev.slots, slot.time],
             };
         });
     };
-
-
-
     /* ================= DRAWER ================= */
+
     const openAdd = () => {
         setForm({
             userName: "",
             phone: "",
+            email: "",
+
             facilityId: "",
-            sport: "",
+            sportId: "",
             rentalDate: null,
-            selectedSlots: [],
+            slots: [],
+
             paymentStatus: "pending",
             paymentMode: "cash",
-            totalAmount: 0,
+
+            /* ===== AMOUNT STRUCTURE ===== */
+            hourlyRate: 0,
+            baseAmount: 0,
+            totalDiscountAmount: 0,
+            finalAmount: 0,
+
+            /* ===== DISCOUNTS ===== */
+            discountCodes: [],
+            discounts: [],
+
+            /* ===== ADDRESS ===== */
+            address: {
+                country: "India",
+                state: "Maharashtra",
+                city: "",
+                localAddress: "",
+            },
         });
+
         setSlots([]);
         setDrawer("add");
         setIsDrawerOpen(true);
     };
 
+    /* ================= VIEW ================= */
 
     const openView = async (r) => {
         setSelected(r);
 
-        // 🔁 Generate selected slots from booking
-        const startHour = Number(r.startTime.split(":")[0]);
-        const endHour = Number(r.endTime.split(":")[0]);
-
-        const selectedSlots = [];
-        for (let h = startHour; h < endHour; h++) {
-            selectedSlots.push(`${String(h).padStart(2, "0")}:00`);
-        }
-
-        // ✅ SET FORM (THIS WAS MISSING)
         setForm({
             userName: r.userName,
             phone: r.phone,
+            email: r.email,
+
             facilityId: r.facilityId?._id,
-            sport: r.sport,
+            sportId: r.sportId,
             rentalDate: new Date(r.rentalDate),
-            selectedSlots,
+
+            slots: r.slots || [],
+
             paymentStatus: r.paymentStatus,
             paymentMode: r.paymentMode,
-            totalAmount: r.totalAmount ?? selectedSlots.length * hourlyRate,
+
+            /* ===== AMOUNT STRUCTURE ===== */
+            hourlyRate: r.hourlyRate || 0,
+            baseAmount: r.baseAmount || 0,
+            totalDiscountAmount: r.totalDiscountAmount || 0,
+            finalAmount: r.finalAmount || r.baseAmount || 0,
+
+            /* ===== DISCOUNTS ===== */
+            discountCodes: r.discounts?.map((d) => d.code).filter(Boolean) || [],
+            discounts: r.discounts || [],
+
+            address: r.address || {
+                country: "India",
+                state: "Maharashtra",
+                city: "",
+                localAddress: "",
+            },
         });
 
-        // 🔥 Load slot availability (read-only)
         if (r.facilityId?._id && r.rentalDate) {
             await loadSlots(
                 r.facilityId._id,
@@ -203,46 +297,62 @@ export default function TurfRentals() {
         setIsDrawerOpen(true);
     };
 
+    /* ================= EDIT ================= */
+
     const openEdit = async (r) => {
         setSelected(r);
-
-        // 🔓 OPEN DRAWER FIRST (CRITICAL FIX)
         setDrawer("edit");
         setIsDrawerOpen(true);
+        setDiscountCode(
+  r.discounts?.[0]?.code || "none"
+);
 
-        // 🔁 Generate selected slots from booking
-        const startHour = Number(r.startTime.split(":")[0]);
-        const endHour = Number(r.endTime.split(":")[0]);
 
-        const selectedSlots = [];
-        for (let h = startHour; h < endHour; h++) {
-            selectedSlots.push(`${String(h).padStart(2, "0")}:00`);
-        }
-
-        // 🧾 Set form values
         setForm({
             userName: r.userName,
             phone: r.phone,
+            email: r.email,
+
             facilityId: r.facilityId?._id,
-            sport: r.sport,
+            sportId: r.sportId,
             rentalDate: new Date(r.rentalDate),
-            selectedSlots,
+
+            slots: r.slots || [],
+
             paymentStatus: r.paymentStatus,
             paymentMode: r.paymentMode,
-            totalAmount: selectedSlots.length * hourlyRate,
+
+            /* ===== AMOUNT STRUCTURE ===== */
+            hourlyRate: r.hourlyRate || 0,
+            baseAmount: r.baseAmount || 0,
+            totalDiscountAmount: r.totalDiscountAmount || 0,
+            finalAmount: r.finalAmount || r.baseAmount || 0,
+
+            /* ===== DISCOUNTS ===== */
+            discountCodes: r.discounts?.map((d) => d.code).filter(Boolean) || [],
+            discounts: r.discounts || [],
+
+            address: r.address || {
+                country: "India",
+                state: "Maharashtra",
+                city: "",
+                localAddress: "",
+            },
         });
 
-        // 🔥 Load slots AFTER drawer opens
         if (r.facilityId?._id && r.rentalDate) {
-            loadSlots(
+            await loadSlots(
                 r.facilityId._id,
                 format(new Date(r.rentalDate), "yyyy-MM-dd")
             );
         }
     };
 
+    /* ================= CLOSE ================= */
+
     const closeDrawer = () => {
         setIsDrawerOpen(false);
+
         setTimeout(() => {
             setDrawer(null);
             setSelected(null);
@@ -250,9 +360,10 @@ export default function TurfRentals() {
     };
 
     /* ================= SAVE ================= */
+
     const saveRental = async () => {
         try {
-            if (!form.selectedSlots.length) {
+            if (!form.slots.length) {
                 toast({
                     title: "Select at least one slot",
                     variant: "destructive",
@@ -260,29 +371,53 @@ export default function TurfRentals() {
                 return;
             }
 
-            const sorted = [...form.selectedSlots].sort();
-            const startTime = sorted[0];
-            const endHour =
-                Number(sorted[sorted.length - 1].split(":")[0]) + 1;
+            if (!form.facilityId || !form.sportId || !form.rentalDate) {
+                toast({
+                    title: "Please fill all required fields",
+                    variant: "destructive",
+                });
+                return;
+            }
 
             const payload = {
-                ...form,
+                source: "admin", // ✅ IMPORTANT
+
+                userName: form.userName,
+                phone: form.phone,
+                email: form.email,
+
+                facilityId: form.facilityId,
+                sportId: form.sportId,
                 rentalDate: format(form.rentalDate, "yyyy-MM-dd"),
-                startTime,
-                endTime: `${String(endHour).padStart(2, "0")}:00`,
-                durationHours: sorted.length,
+                slots: form.slots,
+
+                paymentStatus: form.paymentStatus,
+                paymentMode: form.paymentMode,
+
+                address: form.address,
+
+                /* ===== DISCOUNT SUPPORT ===== */
+
+                // If using coupon codes
+                discountCodes: form.discountCodes || [],
+
+                // If using manual admin discounts
+                discounts: form.discounts || [],
             };
 
+            let res;
+
             if (drawer === "add") {
-                await api.post("/turf-rentals", payload);
-                toast({ title: "Rental added" });
+                res = await api.post("/turf-rentals", payload);
+                toast({ title: "Rental added successfully" });
             } else {
-                await api.patch(`/turf-rentals/${selected._id}`, payload);
-                toast({ title: "Rental updated" });
+                res = await api.patch(`/turf-rentals/${selected._id}`, payload);
+                toast({ title: "Rental updated successfully" });
             }
 
             closeDrawer();
             loadRentals();
+
         } catch (err) {
             toast({
                 title: "Action failed",
@@ -299,71 +434,175 @@ export default function TurfRentals() {
         loadRentals();
     };
 
+    const normalize = (v = "") => v.trim().toLowerCase();
+
+    const findExistingTurfUser = (name) => {
+        if (!name) return null;
+
+        return [...rentals]
+            .reverse() // prefer latest booking
+            .find(
+                (r) => normalize(r.userName) === normalize(name)
+            );
+    };
+
+    /* ================= SHADCN THEME ================= */
+    const selectTriggerClass =
+        "w-full h-11 text-sm bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-green-600";
+    const selectContentClass =
+        "z-[9999] bg-white border shadow-lg rounded-md";
+    const selectItemClass = ` cursor-pointer transition-colors data-[highlighted]:bg-green-100 data-[highlighted]:text-green-900 data-[state=checked]:bg-green-600 data-[state=checked]:text-white`;
     /* ================= STATS ================= */
+    /* ================= STATS ================= */
+
     const total = rentals.length;
-    const confirmed = rentals.filter((r) => r.bookingStatus === "confirmed").length;
-    const pending = rentals.filter((r) => r.bookingStatus === "pending").length;
-    const revenue = rentals.reduce((a, r) => a + (r.totalAmount || 0), 0);
+
+    const confirmed = rentals.filter(
+        (r) => r.bookingStatus === "confirmed"
+    ).length;
+
+    const pending = rentals.filter(
+        (r) => r.bookingStatus === "pending"
+    ).length;
+    const revenue = rentals.reduce(
+        (sum, r) => sum + (Number(r.finalAmount) || 0),
+        0
+    );
 
     /* ================= RENDER SLOT ================= */
     const renderSlot = (slot) => {
-        const isSelected = form.selectedSlots.includes(slot.time);
-
-        /* ================= VIEW MODE (READ ONLY) ================= */
+        const isSelected = form.slots.includes(slot.time);
         if (drawer === "view") {
             if (!isSelected) return null;
-
             return (
                 <div
                     key={slot.time}
-                    className="px-4 py-2 rounded-xl border text-sm
-                   bg-red-50 text-red-600 border-red-300"
+                    className="px-4 py-2 rounded-xl border text-sm bg-green-50 text-green-700 border-green-300"
                 >
                     {slot.label}
                 </div>
             );
         }
 
-        /* ================= EDIT + ADD MODE (INTERACTIVE) ================= */
         let style = "";
-
         if (isSelected) {
-            // 🔴 ACTIVE (BLOCKING)
-            style = "bg-red-600 text-white border-red-600";
+            style = "bg-green-700 text-white border-green-700";
         } else if (slot.status === "available") {
             style = "bg-green-50 text-green-700 border-green-300 hover:bg-green-100";
         } else if (slot.status === "booked") {
-            style =
-                "bg-orange-50 text-orange-500 border-orange-300 cursor-not-allowed";
+            style = "bg-orange-50 text-orange-500 border-orange-300 cursor-not-allowed";
         } else {
-            style =
-                "bg-red-50 text-red-500 border-red-300 cursor-not-allowed";
+            style = "bg-red-50 text-red-500 border-red-300 cursor-not-allowed";
         }
-
         return (
             <button
                 key={slot.time}
                 disabled={slot.status !== "available"}
                 onClick={() => toggleSlot(slot)}
-                className={`px-4 py-2 rounded-xl border text-sm transition
-                  ${style}`}
+                className={`px-4 py-2 rounded-xl border text-sm transition ${style}`}
             >
                 {slot.label}
             </button>
         );
     };
 
+    const renderSlotPills = (slots = []) => {
+        const visible = slots.slice(0, 4);
+        const extra = slots.length - 4;
+        return (
+            <div className="flex flex-wrap gap-1 max-w-[220px]">
+                {visible.map((time) => (
+                    <span
+                        key={time}
+                        className="px-2 py-0.5 rounded-full text-[11px]
+                     bg-green-100 text-green-700 border border-green-300"
+                    >
+                        {formatTime12h(time)}
+                    </span>
+                ))}
+                {extra > 0 && (
+                    <span className="px-2 py-0.5 text-[11px] rounded-full bg-gray-200 text-gray-600">
+                        +{extra} more
+                    </span>
+                )}
+            </div>
+        );
+    };
+
+    const upcomingBookings = useMemo(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return rentals
+            .filter((r) => {
+                const d = new Date(r.rentalDate);
+                d.setHours(0, 0, 0, 0);
+                return d >= today;
+            })
+            .sort((a, b) => new Date(a.rentalDate) - new Date(b.rentalDate))
+            .reduce((acc, r) => {
+                const key = format(new Date(r.rentalDate), "yyyy-MM-dd");
+                acc[key] = acc[key] || [];
+                acc[key].push(r);
+                return acc;
+            }, {});
+    }, [rentals]);
+    /* ================= FILTER LOGIC ================= */
+    const filteredRentals = useMemo(() => {
+        return rentals.filter((r) => {
+            // SPORT FILTER
+            if (filters.sport !== "all" && r.sportId !== filters.sport) {
+                return false;
+            }
+
+            // FACILITY FILTER
+            if (filters.facility !== "all" && r.facilityId?._id !== filters.facility) {
+                return false;
+            }
+            // PAYMENT STATUS FILTER
+            if (filters.status !== "all" && r.paymentStatus !== filters.status) {
+                return false;
+            }
+
+            return true;
+        });
+    }, [rentals, filters]);
+
+    useEffect(() => {
+        setPage(1);
+    }, [filters, rentals]);
+    /* ================= PAGINATION ================= */
+    const totalPages = Math.ceil(filteredRentals.length / ITEMS_PER_PAGE);
+    const paginatedRentals = useMemo(() => {
+        const start = (page - 1) * ITEMS_PER_PAGE;
+        return filteredRentals.slice(start, start + ITEMS_PER_PAGE);
+    }, [filteredRentals, page]);
+
+    useEffect(() => {
+        if (drawer === "add") {
+            if (form.paymentMode === "cash" || form.paymentMode === "upi") {
+                setForm((prev) => ({
+                    ...prev,
+                    paymentStatus: "paid",
+                }));
+            }
+        }
+    }, [form.paymentMode]);
+    /* ================= SHADCN FILTER STYLES ================= */
+    const filterTriggerClass =
+        "h-9 text-sm bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-green-600";
+    const filterContentClass =
+        "z-[9999] bg-white border shadow-lg rounded-md";
+    const filterItemClass = `cursor-pointer transition-colors data-[highlighted]:bg-green-100 data-[highlighted]:text-green-900 data-[state=checked]:bg-green-600 data-[state=checked]:text-white `;
+
     return (
         <div className="text-sm">
-            {/* HEADER */}
             <div className="flex justify-between items-center mb-4">
                 <div>
-                    <h1 className="text-2xl font-semibold text-green-800">Turf Rentals</h1>
+                    <h1 className="text-2xl font-bold text-green-800">Turf Rentals</h1>
                     <p className="text-gray-500">
                         Manage turf rental bookings and schedules.
                     </p>
                 </div>
-
                 <button
                     onClick={openAdd}
                     className="flex items-center gap-2 bg-green-700 text-white px-4 py-2 rounded-md"
@@ -371,7 +610,6 @@ export default function TurfRentals() {
                     <Plus size={16} /> Add Turf Rental
                 </button>
             </div>
-
             {/* STATS */}
             <div className="grid grid-cols-4 gap-4 mb-6">
                 <Stat label="Total Rentals" value={total} />
@@ -379,96 +617,223 @@ export default function TurfRentals() {
                 <Stat label="Pending" value={pending} />
                 <Stat label="Total Revenue" value={`₹${revenue}`} />
             </div>
+            <UpcomingBookings data={upcomingBookings} />
+            {/* ================= FILTER BAR ================= */}
+            <div className="bg-white border rounded-lg p-4 ">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    {/* SPORT */}
+                    <Select
+                        value={filters.sport}
+                        onValueChange={(v) =>
+                            setFilters((p) => ({ ...p, sport: v }))
+                        }
+                    >
+                        <SelectTrigger className={filterTriggerClass}>
+                            <SelectValue placeholder="All Sports" />
+                        </SelectTrigger>
+                        <SelectContent className={filterContentClass}>
+                            <SelectItem value="all" className={filterItemClass}>
+                                All Sports
+                            </SelectItem>
+                            {sports.map((s) => (
+                                <SelectItem
+                                    key={s._id}
+                                    value={s._id}
+                                    className={filterItemClass}
+                                >
+                                    {s.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
 
-            {/* TABLE */}
-            <div className="bg-white border rounded-lg overflow-hidden">
-                <table className="w-full">
-                    <thead className="bg-gray-50 text-gray-600">
-                        <tr className="text-left">
-                            <th className="p-4 text-left">User Name</th>
-                            <th className="p-4">Facility</th>
-                            <th className="p-4">Sport</th>
-                            <th className="p-4">Rental Date</th>
-                            <th className="p-4">Start Time</th>
-                            <th className="p-4">Duration</th>
-                            <th className="p-4">Amount</th>
-                            <th className="p-4">Status</th>
-                            <th className="p-4 text-right">Actions</th>
-                        </tr>
-                    </thead>
-
-                    <tbody>
-                        {rentals.map((r) => (
-                            <tr key={r._id} className="border-t hover:bg-gray-50">
-                                <td className="p-4">{r.userName}</td>
-                                <td className="p-4">{r.facilityName}</td>
-                                <td className="p-4">{r.sport}</td>
-                                <td className="p-4">{r.rentalDate}</td>
-                                <td className="p-4">{r.startTime}</td>
-                                <td className="p-4">{r.durationHours} hrs</td>
-                                <td className="p-4">₹{r.totalAmount}</td>
-                                <td className="p-4">
-                                    <span
-                                        className={`px-3 py-1 rounded-full text-xs font-medium ${PAYMENT_STATUS_STYLES[r.paymentStatus]
-                                            }`}
-                                    >
-                                        {r.paymentStatus}
-                                    </span>
-                                </td>
-                                <td className="p-4 text-right">
-                                    <button
-                                        onClick={() =>
-                                            setMenu(menu === r._id ? null : r._id)
-                                        }
-                                    >
-                                        <MoreVertical />
-                                    </button>
-
-                                    {menu === r._id && (
-                                        <div
-                                            ref={menuRef}
-                                            className="absolute right-6 mt-2 w-32 bg-white border rounded-md shadow z-50"
-                                        >
-                                            <button
-                                                onClick={() => {
-                                                    openView(r);
-                                                    setMenu(null);
-                                                }}
-                                                className="block w-full px-4 py-2 hover:bg-gray-100"
-                                            >
-                                                View
-                                            </button>
-
-                                            <button
-                                                onClick={() => {
-                                                    openEdit(r);
-                                                    setMenu(null);
-                                                }}
-                                                className="block w-full px-4 py-2 hover:bg-gray-100"
-                                            >
-                                                Edit
-                                            </button>
-
-                                            <button
-                                                onClick={() => {
-                                                    deleteRental(r._id);
-                                                    setMenu(null);
-                                                }}
-                                                className="block w-full px-4 py-2 text-red-600 hover:bg-gray-100"
-                                            >
-                                                Delete
-                                            </button>
-                                        </div>
-                                    )}
-
-                                </td>
+                    {/* FACILITY */}
+                    <Select
+                        value={filters.facility}
+                        onValueChange={(v) =>
+                            setFilters((p) => ({ ...p, facility: v }))
+                        }
+                    >
+                        <SelectTrigger className={filterTriggerClass}>
+                            <SelectValue placeholder="All Facilities" />
+                        </SelectTrigger>
+                        <SelectContent className={filterContentClass}>
+                            <SelectItem value="all" className={filterItemClass}>
+                                All Facilities
+                            </SelectItem>
+                            {facilities.map((f) => (
+                                <SelectItem
+                                    key={f._id}
+                                    value={f._id}
+                                    className={filterItemClass}
+                                >
+                                    {f.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    {/* STATUS */}
+                    <Select
+                        value={filters.status}
+                        onValueChange={(v) =>
+                            setFilters((p) => ({ ...p, status: v }))
+                        }
+                    >
+                        <SelectTrigger className={filterTriggerClass}>
+                            <SelectValue placeholder="All Status" />
+                        </SelectTrigger>
+                        <SelectContent className={filterContentClass}>
+                            <SelectItem value="all" className={filterItemClass}>
+                                All Status
+                            </SelectItem>
+                            <SelectItem value="paid" className={filterItemClass}>
+                                Paid
+                            </SelectItem>
+                            <SelectItem value="pending" className={filterItemClass}>
+                                Pending
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                {/* TABLE */}
+                <div className="bg-white border rounded-lg overflow-visible mt-4">
+                    <table className="w-full">
+                        <thead className="bg-gray-50 text-gray-600">
+                            <tr className="text-left">
+                                <th className="p-4 text-left">User Name</th>
+                                <th className="p-4">Facility</th>
+                                <th className="p-4">Sport</th>
+                                <th className="p-4">Rental Date</th>
+                                <th className="p-4">Slots</th>
+                                <th className="p-4">Amount</th>
+                                <th className="p-4">Status</th>
+                                <th className="p-4 text-right">Actions</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {paginatedRentals.length === 0 ? (
+                                <tr>
+                                    <td colSpan={8} className="p-6 text-center text-gray-500">
+                                        No turf rentals found
+                                    </td>
+                                </tr>
+                            ) : (
+                                paginatedRentals.map((r) => (
+                                    <tr key={r._id} className="border-t hover:bg-gray-50">
+                                        <td className="p-4">{r.userName}</td>
+                                        <td className="p-4">{r.facilityName}</td>
+                                        <td className="p-4">{r.sportName}</td>
+                                        <td className="p-4">{formatDateDMY(r.rentalDate)}</td>
+
+                                        <td className="p-4">
+                                            {renderSlotPills(r.slots)}
+                                        </td>
+
+                                        <td className="p-4">₹{r.finalAmount}</td>
+
+                                        <td className="p-4">
+                                            <span
+                                                className={`px-3 py-1 rounded-full text-xs font-medium ${PAYMENT_STATUS_STYLES[r.paymentStatus]
+                                                    }`}
+                                            >
+                                                {r.paymentStatus}
+                                            </span>
+                                        </td>
+
+                                        <td className="p-4 text-right relative">
+                                            <button
+                                                onClick={() =>
+                                                    setMenu(menu === r._id ? null : r._id)
+                                                }
+                                            >
+                                                <MoreVertical />
+                                            </button>
+
+                                            {menu === r._id && (
+                                                <div
+                                                    ref={menuRef}
+                                                    className="absolute right-0 mt-0 w-40 bg-white border rounded-md shadow z-50"
+                                                >
+                                                    <button
+                                                        onClick={() => {
+                                                            openView(r);
+                                                            setMenu(null);
+                                                        }}
+                                                        className="block w-full text-left px-4 py-2 hover:bg-gray-100"
+                                                    >
+                                                        View
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => {
+                                                            openEdit(r);
+                                                            setMenu(null);
+                                                        }}
+                                                        className="block w-full text-left px-4 py-2 hover:bg-gray-100"
+                                                    >
+                                                        Edit
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => {
+                                                            navigate(`/admin/turf-rentals/invoice/${r._id}`);
+                                                            toast({ title: "Opening invoice view" });
+                                                            setMenu(null);
+                                                        }}
+                                                        className="block w-full text-left px-4 py-2 hover:bg-gray-100"
+                                                    >
+                                                        View Invoice
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => {
+                                                            deleteRental(r._id);
+                                                            setMenu(null);
+                                                        }}
+                                                        className="block w-full text-left px-4 py-2 text-red-600 hover:bg-gray-100"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+                {/* ================= PAGINATION ================= */}
+                {totalPages > 1 && (
+                    <div className="flex justify-between items-center px-4 py-3  bg-white">
+                        <span className="text-sm text-gray-500">
+                            Page {page} of {totalPages}
+                        </span>
+
+                        <div className="flex gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={page === 1}
+                                onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                            >
+                                Previous
+                            </Button>
+
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={page === totalPages}
+                                onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+                            >
+                                Next
+                            </Button>
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {/* RIGHT DRAWER */}
             {/* RIGHT SHEET */}
             <div className="fixed inset-0 z-50 pointer-events-none">
                 {/* Overlay */}
@@ -505,47 +870,143 @@ export default function TurfRentals() {
                         {/* Body */}
                         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 text-sm">
                             {/* User Name */}
-                            <div>
-                                <Label>User / Group Name</Label>
-                                <Input
-                                    disabled={drawer === "view"}
-                                    value={drawer === "view" ? selected?.userName : form.userName}
-                                    onChange={(e) =>
-                                        setForm({ ...form, userName: e.target.value })
-                                    }
-                                />
+                            {/* USER INFO */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label>User / Group Name</Label>
+                                    <Input
+                                        disabled={drawer === "view"}
+                                        placeholder="User or Group Name"
+                                        value={form.userName}
+                                        onChange={(e) => {
+                                            const name = e.target.value;
+                                            const existing = findExistingTurfUser(name);
+
+                                            if (existing) {
+                                                setForm((prev) => ({
+                                                    ...prev,
+                                                    userName: name,
+                                                    phone: existing.phone || "",
+                                                    email: existing.email || "",
+                                                    address: {
+                                                        country: existing.address?.country || "India",
+                                                        state: existing.address?.state || "Maharashtra",
+                                                        city: existing.address?.city || "",
+                                                        localAddress: existing.address?.localAddress || "",
+                                                    },
+                                                }));
+                                            } else {
+                                                setForm((prev) => ({
+                                                    ...prev,
+                                                    userName: name,
+                                                }));
+                                            }
+                                        }}
+                                    />
+
+                                </div>
+
+                                <div>
+                                    <Label>Phone</Label>
+                                    <Input
+                                        disabled={drawer === "view"}
+                                        placeholder="Phone Number"
+                                        value={form.phone}
+                                        onChange={(e) =>
+                                            setForm({ ...form, phone: e.target.value })
+                                        }
+                                    />
+                                </div>
+
+                                {/* EMAIL */}
+                                <div className="col-span-2">
+                                    <Label>Email</Label>
+                                    <Input
+                                        type="email"
+                                        placeholder="example@gmail.com"
+                                        disabled={drawer === "view"}
+                                        value={form.email}
+                                        onChange={(e) =>
+                                            setForm({ ...form, email: e.target.value })
+                                        }
+                                    />
+                                </div>
                             </div>
 
-                            {/* Phone */}
-                            <div>
-                                <Label>Phone</Label>
-                                <Input
-                                    disabled={drawer === "view"}
-                                    value={drawer === "view" ? selected?.phone : form.phone}
-                                    onChange={(e) =>
-                                        setForm({ ...form, phone: e.target.value })
-                                    }
-                                />
+
+                            {/* ADDRESS */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label>City</Label>
+                                    <Select
+                                        disabled={drawer === "view"}
+                                        value={form.address?.city || ""}
+                                        onValueChange={(city) =>
+                                            setForm({
+                                                ...form,
+                                                address: { ...form.address, city },
+                                            })
+                                        }
+                                    >
+                                        <SelectTrigger className={selectTriggerClass}>
+                                            <SelectValue placeholder="Select City" />
+                                        </SelectTrigger>
+
+                                        <SelectContent className={selectContentClass}>
+                                            {cities.map((city) => (
+                                                <SelectItem
+                                                    key={city}
+                                                    value={city}
+                                                    className={selectItemClass}
+                                                >
+                                                    {city}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+
+                                <div>
+                                    <Label>Local Address</Label>
+                                    <Input
+                                        disabled={drawer === "view"}
+                                        value={form.address?.localAddress || ""}
+                                        onChange={(e) =>
+                                            setForm({
+                                                ...form,
+                                                address: {
+                                                    ...form.address,
+                                                    localAddress: e.target.value,
+                                                },
+                                            })
+                                        }
+                                    />
+                                </div>
                             </div>
+
+
 
                             {/* Facility + Sport */}
                             <div className="grid grid-cols-2 gap-4">
+                                {/* ================= FACILITY ================= */}
                                 <div>
                                     <Label>Facility</Label>
+
                                     <Select
                                         disabled={drawer === "view"}
                                         value={form.facilityId}
                                         onValueChange={(facilityId) => {
-                                            const facility = facilities.find(f => f._id === facilityId);
+                                            const facility = facilities.find((f) => f._id === facilityId);
 
-                                            setForm(prev => ({
+                                            setForm((prev) => ({
                                                 ...prev,
                                                 facilityId,
+                                                sportId: "",
                                                 selectedSlots: [],
                                                 totalAmount: 0,
                                             }));
 
-                                            // 🔥 LOAD SLOTS IF DATE EXISTS
                                             if (form.rentalDate) {
                                                 loadSlots(
                                                     facilityId,
@@ -556,12 +1017,21 @@ export default function TurfRentals() {
                                             setHourlyRate(facility?.hourlyRate || 0);
                                         }}
                                     >
-                                        <SelectTrigger>
+                                        <SelectTrigger className={selectTriggerClass}>
                                             <SelectValue placeholder="Select Facility" />
                                         </SelectTrigger>
-                                        <SelectContent>
+
+                                        <SelectContent
+                                            position="popper"
+                                            sideOffset={4}
+                                            className={selectContentClass}
+                                        >
                                             {facilities.map((f) => (
-                                                <SelectItem key={f._id} value={f._id}>
+                                                <SelectItem
+                                                    key={f._id}
+                                                    value={f._id}
+                                                    className={selectItemClass}
+                                                >
                                                     {f.name}
                                                 </SelectItem>
                                             ))}
@@ -569,31 +1039,55 @@ export default function TurfRentals() {
                                     </Select>
                                 </div>
 
+                                {/* ================= SPORT ================= */}
                                 <div>
                                     <Label>Sport</Label>
+
                                     <Select
-                                        disabled={drawer === "view"}
-                                        value={form.sport}
-                                        onValueChange={(v) =>
-                                            setForm({ ...form, sport: v })
+                                        disabled={drawer === "view" || !form.facilityId}
+                                        value={form.sportId}
+                                        onValueChange={(sportId) =>
+                                            setForm((prev) => ({ ...prev, sportId }))
                                         }
                                     >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select Sport" />
+                                        <SelectTrigger className={selectTriggerClass}>
+                                            <SelectValue
+                                                placeholder={
+                                                    form.facilityId
+                                                        ? "Select Sport"
+                                                        : "Select facility first"
+                                                }
+                                            />
                                         </SelectTrigger>
-                                        <SelectContent>
-                                            {sports.map((s) => (
-                                                <SelectItem key={s._id} value={s.name}>
-                                                    {s.name}
-                                                </SelectItem>
-                                            ))}
+
+                                        <SelectContent
+                                            position="popper"
+                                            sideOffset={4}
+                                            className={selectContentClass}
+                                        >
+                                            {allowedSports.length > 0 ? (
+                                                allowedSports.map((s) => (
+                                                    <SelectItem
+                                                        key={s._id}
+                                                        value={s._id}
+                                                        className={selectItemClass}
+                                                    >
+                                                        {s.name}
+                                                    </SelectItem>
+                                                ))
+                                            ) : (
+                                                <div className="px-3 py-2 text-xs text-muted-foreground">
+                                                    No sports available
+                                                </div>
+                                            )}
                                         </SelectContent>
                                     </Select>
                                 </div>
                             </div>
 
+
                             {/* Date */}
-                            {/* Rental Date */}
+                            {/* ================= RENTAL DATE ================= */}
                             <div>
                                 <Label>Rental Date</Label>
 
@@ -606,10 +1100,14 @@ export default function TurfRentals() {
                                     <PopoverTrigger asChild>
                                         <Button
                                             variant="outline"
-                                            className="w-full justify-start text-left"
-                                            disabled={drawer !== "add"}   // 🔒 DISABLE IN EDIT & VIEW
+                                            disabled={drawer !== "add"} // 🔒 disable in edit & view
+                                            className="
+                                                        w-full h-11 justify-start text-left font-normal
+                                                        bg-white border border-gray-300
+                                                        focus:ring-2 focus:ring-green-600
+                                                        "
                                         >
-                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
                                             {form.rentalDate
                                                 ? format(form.rentalDate, "dd MMM yyyy")
                                                 : "Pick a date"}
@@ -617,7 +1115,10 @@ export default function TurfRentals() {
                                     </PopoverTrigger>
 
                                     {drawer === "add" && (
-                                        <PopoverContent className="p-0">
+                                        <PopoverContent
+                                            align="start"
+                                            className="p-0 z-[9999] bg-white border shadow-lg"
+                                        >
                                             <Calendar
                                                 mode="single"
                                                 selected={form.rentalDate}
@@ -632,61 +1133,75 @@ export default function TurfRentals() {
                                                     }));
 
                                                     if (form.facilityId) {
-                                                        loadSlots(form.facilityId, format(d, "yyyy-MM-dd"));
+                                                        loadSlots(
+                                                            form.facilityId,
+                                                            format(d, "yyyy-MM-dd")
+                                                        );
                                                     }
 
-                                                    setDateOpen(false); // ✅ CLOSE CALENDAR AFTER SELECT
+                                                    setDateOpen(false); // ✅ close after select
+                                                }}
+                                                initialFocus
+                                                classNames={{
+                                                    day: `
+              h-9 w-9 p-0 font-normal rounded-md
+              transition-colors
+              hover:bg-green-100 hover:text-green-900
+            `,
+                                                    day_selected: `
+              bg-green-600 text-white
+              hover:bg-green-600 hover:text-white
+            `,
+                                                    day_today: `
+              border border-green-600
+              text-green-700 font-semibold
+            `,
+                                                    day_outside: "text-muted-foreground opacity-50",
+                                                    day_disabled: "text-muted-foreground opacity-30",
                                                 }}
                                             />
                                         </PopoverContent>
                                     )}
                                 </Popover>
-
-
                             </div>
-
 
                             {/* Start Time + Duration */}
                             <div className="grid grid-cols-1 gap-4">
                                 {slots.length > 0 && (
-                                    <div className="mt-6 border rounded-xl p-5 bg-gray-50">
+                                    <div className="mt-6 border rounded-xl p-5 bg-white">
 
                                         <h3 className="font-semibold text-green-700 mb-4">
                                             Available Slots
                                         </h3>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {/* ================= MORNING ================= */}
+                                        <div className="mb-6">
+                                            <p className="text-sm text-gray-600 mb-3">
+                                                Morning (7 AM – 11 AM)
+                                            </p>
 
-                                            {/* ===== MORNING ===== */}
-                                            <div>
-                                                <p className="text-sm text-gray-600 mb-3">
-                                                    Morning (7 AM – 11 AM)
-                                                </p>
-
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    {slots
-                                                        .filter((s) => Number(s.time.slice(0, 2)) < 11)
-                                                        .map(renderSlot)}
-                                                </div>
+                                            <div className="flex flex-wrap gap-3">
+                                                {slots
+                                                    .filter((s) => Number(s.time.slice(0, 2)) < 11)
+                                                    .map(renderSlot)}
                                             </div>
-
-                                            {/* ===== EVENING ===== */}
-                                            <div>
-                                                <p className="text-sm text-gray-600 mb-3">
-                                                    Evening (2 PM – 9 PM)
-                                                </p>
-
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    {slots
-                                                        .filter((s) => Number(s.time.slice(0, 2)) >= 14)
-                                                        .map(renderSlot)}
-                                                </div>
-                                            </div>
-
                                         </div>
 
-                                        {/* ===== SLOT LEGEND ===== */}
-                                        <div className="flex gap-6 text-xs text-gray-600 mt-6">
+                                        {/* ================= EVENING ================= */}
+                                        <div>
+                                            <p className="text-sm text-gray-600 mb-3">
+                                                Evening (2 PM – 9 PM)
+                                            </p>
+
+                                            <div className="flex flex-wrap gap-3">
+                                                {slots
+                                                    .filter((s) => Number(s.time.slice(0, 2)) >= 14)
+                                                    .map(renderSlot)}
+                                            </div>
+                                        </div>
+
+                                        {/* ================= LEGEND ================= */}
+                                        <div className="flex flex-wrap gap-6 text-xs text-gray-600 mt-6">
                                             <span className="flex items-center gap-2">
                                                 <span className="w-3 h-3 rounded bg-green-400" />
                                                 Available
@@ -704,11 +1219,10 @@ export default function TurfRentals() {
                                         </div>
                                     </div>
                                 )}
-
                             </div>
-
-                            {/* Payment */}
+                            {/* ================= PAYMENT ================= */}
                             <div className="grid grid-cols-2 gap-4">
+                                {/* PAYMENT STATUS */}
                                 <div>
                                     <Label>Payment Status</Label>
                                     <Select
@@ -718,18 +1232,29 @@ export default function TurfRentals() {
                                             setForm({ ...form, paymentStatus: v })
                                         }
                                     >
-                                        <SelectTrigger>
-                                            <SelectValue />
+                                        <SelectTrigger className={selectTriggerClass}>
+                                            <SelectValue placeholder="Select status" />
                                         </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="paid">Paid</SelectItem>
-                                            <SelectItem value="pending">Pending</SelectItem>
+
+                                        <SelectContent
+                                            position="popper"
+                                            sideOffset={4}
+                                            className={selectContentClass}
+                                        >
+                                            <SelectItem value="paid" className={selectItemClass}>
+                                                Paid
+                                            </SelectItem>
+                                            <SelectItem value="pending" className={selectItemClass}>
+                                                Pending
+                                            </SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
 
+                                {/* PAYMENT METHOD */}
                                 <div>
                                     <Label>Payment Method</Label>
+
                                     <Select
                                         disabled={drawer === "view"}
                                         value={form.paymentMode}
@@ -737,23 +1262,76 @@ export default function TurfRentals() {
                                             setForm({ ...form, paymentMode: v })
                                         }
                                     >
-                                        <SelectTrigger>
-                                            <SelectValue />
+                                        <SelectTrigger className={selectTriggerClass}>
+                                            <SelectValue placeholder="Select method" />
                                         </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="cash">Cash</SelectItem>
-                                            <SelectItem value="upi">UPI</SelectItem>
-                                            <SelectItem value="razorpay">Razorpay</SelectItem>
+
+                                        <SelectContent
+                                            position="popper"
+                                            sideOffset={4}
+                                            className={selectContentClass}
+                                        >
+                                            <SelectItem value="cash" className={selectItemClass}>
+                                                Cash
+                                            </SelectItem>
+                                            <SelectItem value="upi" className={selectItemClass}>
+                                                UPI
+                                            </SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
                             </div>
 
-                            {/* Amount */}
-                            <div>
-                                <Label>Total Amount (₹)</Label>
-                                <Input disabled value={form.totalAmount} />
+                            {/* ================= DISCOUNT ================= */}
+                            <div className="space-y-3 border-t pt-4">
+                                <Label>Apply Discount</Label>
+                                <Select
+                                    disabled={drawer === "view"}
+                                    value={discountCode}
+                                    onValueChange={(code) => setDiscountCode(code)}
+                                >
+                                    <SelectTrigger className={selectTriggerClass}>
+                                        <SelectValue placeholder="Select Discount (optional)" />
+                                    </SelectTrigger>
 
+                                    <SelectContent className={selectContentClass}>
+                                        <SelectItem value="none" className={selectItemClass}>
+                                            No Discount
+                                        </SelectItem>
+                                        {availableDiscounts.map((d) => (
+                                            <SelectItem
+                                                key={d._id}
+                                                value={d.code}
+                                                className={selectItemClass}
+                                            >
+                                                {d.code} — {d.type === "percentage"
+                                                    ? `${d.value}%`
+                                                    : `₹${d.value}`}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {/* Show applied discount */}
+                                {form.totalDiscountAmount > 0 && (
+                                    <div className="text-sm text-green-600">
+                                        Discount Applied: ₹{form.totalDiscountAmount}
+                                    </div>
+                                )}
+                            </div>
+                            {/* ================= AMOUNT BREAKDOWN ================= */}
+                            <div className="space-y-2">
+                                <div className="flex justify-between text-sm">
+                                    <span>Base Amount</span>
+                                    <span>₹{form.baseAmount || 0}</span>
+                                </div>
+                                <div className="flex justify-between text-sm text-green-600">
+                                    <span>Discount</span>
+                                    <span>- ₹{form.totalDiscountAmount || 0}</span>
+                                </div>
+                                <div className="flex justify-between font-semibold text-lg text-green-700 border-t pt-2">
+                                    <span>Final Amount</span>
+                                    <span>₹{form.finalAmount || 0}</span>
+                                </div>
                             </div>
                         </div>
 
@@ -785,3 +1363,37 @@ function Stat({ label, value }) {
         </div>
     );
 }
+
+function UpcomingBookings({ data }) {
+    if (!Object.keys(data).length) return null;
+    return (
+        <div className="bg-white border rounded-xl p-6 mb-6">
+            <h2 className="flex items-center gap-2 text-lg font-semibold mb-4">
+                <CalendarIcon className="text-green-700" size={18} />
+                Upcoming Bookings
+            </h2>
+            <div className="grid md:grid-cols-3 gap-4">
+                {Object.entries(data).map(([date, bookings]) => (
+                    <div
+                        key={date}
+                        className="bg-gray-50 rounded-lg p-4 space-y-3"
+                    >
+                        <div className="font-semibold">
+                            {format(new Date(date), "yyyy-MM-dd")}
+                        </div>
+                        {bookings.map((b) => (
+                            <div
+                                key={b._id}
+                                className="flex justify-between text-sm text-gray-700"
+                            >
+                                <span>{getSlotRange(b.slots)}</span>
+                                <span className="font-medium">{b.facilityName}</span>
+                            </div>
+                        ))}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+

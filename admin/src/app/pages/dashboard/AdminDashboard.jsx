@@ -1,31 +1,30 @@
 import { useEffect } from "react";
 import { useAdminStore } from "../../../store/adminStore";
-import { useAuth } from "../../providers/AuthProvider";
 
 import StatsCards from "./StatsCards";
 import SecondaryStats from "./SecondaryStats";
+import QuickActions from "./QuickActions";
 import Charts from "./Charts";
-import RecentActivity from "./RecentActivity";
+import RevenueOverview from "./RevenueOverview";
+import UpcomingSlots from "./UpcomingSlots";
+import FacilityUtilization from "./FacilityUtilization";
 
 export default function AdminDashboard() {
-  const { stats, activity, fetchDashboard, fetchActivity, loading } =
-    useAdminStore();
-  const { token } = useAuth();
+  const { stats, fetchDashboard, loading } = useAdminStore();
 
   useEffect(() => {
-    if (token) {
-      fetchDashboard(token);
-      fetchActivity(token);
-    }
-  }, [token]);
+    fetchDashboard();
+  }, []);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       {/* HEADER */}
       <div>
-        <h1 className="text-3xl font-semibold text-green-700">Dashboard</h1>
+        <h1 className="text-2xl font-bold text-green-800">
+          Dashboard
+        </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Welcome back! Here's an overview of your academy.
+          Academy overview
         </p>
       </div>
 
@@ -35,10 +34,25 @@ export default function AdminDashboard() {
       {/* SECONDARY STATS */}
       <SecondaryStats stats={stats} loading={loading} />
 
-      {/* ACTIVITY + CHART */}
+      {/* QUICK ACTIONS */}
+      <QuickActions />
+
+      {/* CHARTS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Charts />
-        <RecentActivity activity={activity} />
+        <Charts stats={stats} />
+        <RevenueOverview data={stats?.revenueSeries || []} />
+      </div>
+
+      {/* UPCOMING SLOTS + UTILIZATION */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          <UpcomingSlots slots={stats?.upcomingSlots || []} />
+        </div>
+
+        <FacilityUtilization
+          facilities={stats?.facilityUtilization || []}
+          average={stats?.turfUtilization || 0}
+        />
       </div>
     </div>
   );

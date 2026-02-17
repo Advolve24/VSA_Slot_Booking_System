@@ -1,5 +1,7 @@
+// src/app/layout/Sidebar.jsx
 import { NavLink } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useAuth } from "../providers/AuthProvider";
 import {
   LayoutDashboard,
   Users,
@@ -14,17 +16,14 @@ import {
   Menu,
   X,
   Trophy,
+  LogOut,
 } from "lucide-react";
 
 const menu = [
   { label: "Dashboard", to: "/admin", icon: LayoutDashboard },
   { label: "Enrollments", to: "/admin/enrollments", icon: Users },
-  { label: "Bookings", to: "/admin/bookings", icon: Calendar },
   { label: "Turf Rentals", to: "/admin/turf-rentals", icon: Grid },
-
-  // ✅ NEW: SPORTS CRUD
   { label: "Sports", to: "/admin/sports", icon: Trophy },
-
   { label: "Coaching Batches", to: "/admin/batches", icon: Layers },
   { label: "Facilities", to: "/admin/facilities", icon: Building2 },
   { label: "Reports", to: "/admin/reports", icon: BarChart3 },
@@ -32,26 +31,40 @@ const menu = [
 ];
 
 export default function Sidebar() {
+  const { logout, admin } = useAuth();
+
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  /* 🔒 Lock body scroll on mobile */
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? "hidden" : "";
+    return () => (document.body.style.overflow = "");
+  }, [mobileOpen]);
 
   return (
     <>
       {/* ================= MOBILE TOP BAR ================= */}
-      <div className="md:hidden flex items-center justify-between px-4 py-3 bg-[#0F6B2F] text-white">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 py-3 bg-[#0F6B2F] text-white">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-orange-500 rounded-lg flex items-center justify-center font-bold">
-            V
+          <div className="w-10 h-10 rounded-md overflow-hidden bg-white border flex items-center justify-center p-1 ">
+            <img
+              src="/VSA-Logo-1.png"        
+              alt="VSA Logo"
+              className="w-full h-full object-contain"
+            />
           </div>
+
           <span className="font-semibold">VSA Admin</span>
         </div>
+
 
         <button onClick={() => setMobileOpen(true)}>
           <Menu className="w-6 h-6" />
         </button>
       </div>
 
-      {/* ================= OVERLAY (MOBILE) ================= */}
+      {/* ================= OVERLAY ================= */}
       {mobileOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-40 md:hidden"
@@ -62,58 +75,56 @@ export default function Sidebar() {
       {/* ================= SIDEBAR ================= */}
       <aside
         className={`
-          fixed md:static z-50 top-0 left-0
-          bg-[#0F6B2F] text-white flex flex-col min-h-screen
-          transition-all duration-300
+          z-50 bg-[#0F6B2F] text-white flex flex-col h-screen
+          transition-all duration-300 ease-in-out
+
+          /* MOBILE */
+          fixed top-0 left-0
+          ${mobileOpen ? "translate-x-0 w-64" : "-translate-x-full w-64"}
+
+          /* DESKTOP */
+          md:static md:translate-x-0
           ${collapsed ? "md:w-20" : "md:w-64"}
-          ${
-            mobileOpen
-              ? "w-64 translate-x-0"
-              : "w-64 -translate-x-full md:translate-x-0"
-          }
         `}
       >
         {/* LOGO */}
         <div className="flex items-center justify-between px-4 py-6">
-          <div className="flex items-center">
-            <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center font-bold">
-              V
-            </div>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg overflow-hidden bg-white border flex items-center justify- p-1">
+            <img
+              src="/VSA-Logo-1.png"        
+              alt="VSA Logo"
+              className="w-full h-full object-contain"
+            />
+          </div>
 
             {!collapsed && (
-              <span className="ml-3 text-lg font-semibold">VSA Admin</span>
+              <span className="text-lg font-semibold">VSA Admin</span>
             )}
           </div>
 
-          {/* Close button (mobile) */}
-          <button
-            onClick={() => setMobileOpen(false)}
-            className="md:hidden"
-          >
+          {/* Close (mobile) */}
+          <button className="md:hidden" onClick={() => setMobileOpen(false)}>
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* MENU */}
-        <nav className="flex-1 px-2 space-y-1">
+        <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
           {menu.map(({ label, to, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
               end={to === "/admin"}
               onClick={() => setMobileOpen(false)}
-              className={({ isActive }) =>
-                `
+              className={({ isActive }) => `
                 flex items-center gap-3 px-3 py-3 rounded-lg
-                transition-all duration-200
-                ${
-                  isActive
-                    ? "bg-green-700 text-white"
-                    : "text-green-100 hover:bg-green-700/60"
-                }
+                transition-all
+                ${isActive
+                  ? "bg-green-700 text-white"
+                  : "text-green-100 hover:bg-green-700/60"}
                 ${collapsed ? "md:justify-center" : ""}
-                `
-              }
+              `}
             >
               <Icon className="w-5 h-5 shrink-0" />
               {!collapsed && (
@@ -123,11 +134,29 @@ export default function Sidebar() {
           ))}
         </nav>
 
-        {/* COLLAPSE BUTTON (DESKTOP ONLY) */}
-        <div className="hidden md:block border-t border-green-800 px-3 py-4">
+        {/* LOGOUT */}
+        <div className="border-t border-green-800 px-3 py-4">
+          <button
+            onClick={() => {
+              setMobileOpen(false);
+              logout();
+            }}
+            className={`
+              w-full flex items-center gap-3 px-3 py-3 rounded-lg
+              text-red-200 hover:text-red-100 hover:bg-red-600/20
+              ${collapsed ? "justify-center" : ""}
+            `}
+          >
+            <LogOut className="w-5 h-5" />
+            {!collapsed && <span className="text-sm font-medium">Logout</span>}
+          </button>
+        </div>
+
+        {/* COLLAPSE (DESKTOP) */}
+        <div className="hidden md:block border-t border-green-800 px-3 py-3">
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="w-full flex items-center justify-center gap-2 text-green-100 hover:text-white transition"
+            className="w-full flex items-center justify-center gap-2 text-green-100 hover:text-white"
           >
             {collapsed ? (
               <ChevronRight className="w-4 h-4" />
@@ -140,6 +169,9 @@ export default function Sidebar() {
           </button>
         </div>
       </aside>
+
+      {/* Push content below mobile top bar */}
+      <div className="md:hidden h-14" />
     </>
   );
 }

@@ -4,8 +4,8 @@ import { BarChart3, TrendingUp, Clock } from "lucide-react";
 export default function SecondaryStats({ stats, loading }) {
   const items = [
     {
-      title: "Total Bookings",
-      value: stats?.totalBookings,
+      title: "Total Turf Rentals",
+      value: stats?.totalTurfRentals ?? 0,
       icon: BarChart3,
     },
     {

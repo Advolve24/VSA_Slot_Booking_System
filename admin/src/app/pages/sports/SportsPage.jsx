@@ -93,7 +93,7 @@ export default function SportsPage() {
     <div className="space-y-6">
       {/* HEADER */}
       <div className="flex flex-col sm:flex-row sm:justify-between gap-4">
-        <h2 className="text-2xl font-bold">Sports</h2>
+        <h2 className="text-2xl font-bold text-green-800">Sports</h2>
         <Button onClick={openAdd}>
           <Plus className="w-4 h-4 mr-2" /> Add Sport
         </Button>
