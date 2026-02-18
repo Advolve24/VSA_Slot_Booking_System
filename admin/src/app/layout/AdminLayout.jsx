@@ -4,13 +4,15 @@ import Sidebar from "./Sidebar";
 
 export default function AdminLayout() {
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-dvh bg-gray-50">
       <Sidebar />
 
-        {/* ✅ THIS MUST SCROLL */}
-        <main className="flex-1 overflow-y-auto mt-14 sm:mt-0 p-2 sm:p-6 ">
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <main className="flex-1 overflow-y-auto mt-14 sm:mt-0 p-2 sm:p-6">
           <Outlet />
         </main>
+      </div>
     </div>
   );
 }
+
