@@ -730,7 +730,7 @@ export default function CoachingEnrollment() {
           side={isMobile ? "bottom" : "right"}
           className={
             isMobile
-              ? "h-[92vh] rounded-t-2xl flex flex-col px-4 pt-4 pb-2"
+              ? "h-[80vh] rounded-t-2xl flex flex-col px-4 pt-4 pb-2"
               : "w-[30vw] h-screen flex flex-col"
           }
         >
