@@ -41,25 +41,26 @@ export default function StatsCards({ stats, loading }) {
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 w-full">
       {cards.map((card, i) => (
         <Card
           key={i}
-          className={`${card.cardBg} border-none rounded-xl transition-all hover:shadow-lg`}
+          className={`${card.cardBg} border-none rounded-xl transition-all hover:shadow-lg w-full`}
         >
-          <CardContent className="p-6 flex items-center justify-between">
-            {/* LEFT */}
-            <div>
-              <p className="text-sm text-muted-foreground font-medium">
+          <CardContent className="p-4 sm:p-5 md:p-6 flex items-start justify-between gap-3">
+            
+            {/* LEFT CONTENT */}
+            <div className="flex-1">
+              <p className="text-xs sm:text-sm text-muted-foreground font-medium leading-tight break-words">
                 {card.title}
               </p>
 
-              <h2 className="text-3xl font-bold text-foreground mt-2">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground mt-2 leading-tight break-words">
                 {loading ? "—" : card.value}
               </h2>
 
               {card.subText && (
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-2 break-words leading-snug">
                   {card.subText}
                 </p>
               )}
@@ -67,10 +68,11 @@ export default function StatsCards({ stats, loading }) {
 
             {/* RIGHT ICON */}
             <div
-              className={`w-12 h-12 rounded-xl flex items-center justify-center ${card.iconBg}`}
+              className={`flex-shrink-0 w-8 h-8 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center ${card.iconBg}`}
             >
-              <card.icon className={`w-6 h-6 ${card.iconColor}`} />
+              <card.icon className={`w-5 h-5 sm:w-6 sm:h-6 ${card.iconColor}`} />
             </div>
+
           </CardContent>
         </Card>
       ))}

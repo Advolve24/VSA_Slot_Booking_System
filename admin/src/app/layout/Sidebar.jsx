@@ -45,7 +45,7 @@ export default function Sidebar() {
   return (
     <>
       {/* ================= MOBILE TOP BAR ================= */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 py-3 bg-[#0F6B2F] text-white">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 py-3 bg-[#0F6B2F] text-white ">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-md overflow-hidden bg-white border flex items-center justify-center p-1 ">
             <img

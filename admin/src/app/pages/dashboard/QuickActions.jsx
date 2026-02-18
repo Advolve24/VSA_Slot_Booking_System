@@ -15,18 +15,9 @@ export default function QuickActions() {
         }),
     },
     {
-      label: "Block Slots",
-      icon: Ban,
-      color: "bg-red-600",
-      onClick: () =>
-        navigate("/admin/facilities", {
-          state: { tab: "blocked" },
-        }),
-    },
-    {
       label: "New Enrollment",
       icon: UserPlus,
-      color: "bg-green-700",
+      color: "bg-[#47426d]",
       onClick: () => navigate("/admin/enrollments"),
     },
     {
@@ -38,22 +29,37 @@ export default function QuickActions() {
           state: { tab: "turf-rental" },
         }),
     },
+    {
+      label: "Block Slots",
+      icon: Ban,
+      color: "bg-red-600",
+      onClick: () =>
+        navigate("/admin/facilities", {
+          state: { tab: "blocked" },
+        }),
+    },
+    
   ];
 
   return (
-    <div className="bg-white border rounded-xl p-5">
-      <h2 className="font-semibold mb-3">Quick Actions</h2>
+    <div className="bg-white border rounded-xl p-4 sm:p-5 md:p-6 w-full">
+      <h2 className="font-semibold text-base sm:text-lg mb-4">
+        Quick Actions
+      </h2>
 
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+      {/* 2 per row mobile, 4 per row desktop */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {actions.map((a, i) => (
           <button
             key={i}
             onClick={a.onClick}
-            className={`flex items-center justify-center gap-2 h-12 rounded-xl font-medium transition
+            className={`flex flex-col items-center justify-center gap-2 py-4 rounded-xl font-medium text-sm sm:text-base transition w-full
               ${a.color} text-white hover:opacity-90`}
           >
-            <a.icon className="w-3 h-3" />
-            {a.label}
+            <a.icon className="w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-center leading-tight break-words">
+              {a.label}
+            </span>
           </button>
         ))}
       </div>

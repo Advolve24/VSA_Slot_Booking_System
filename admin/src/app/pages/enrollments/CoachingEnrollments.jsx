@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import api from "@/lib/axios";
-import { CalendarIcon, MoreHorizontal } from "lucide-react";
+import { CalendarIcon, MoreHorizontal, SlidersHorizontal, RotateCcw } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -12,12 +12,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { getMaharashtraCities } from "@/lib/location";
 import { useNavigate } from "react-router-dom";
-
-
 /* ================= CONSTANTS ================= */
 const PAYMENT_MODES = ["cash", "upi"];
 const PAYMENT_STATUS = ["paid", "pending"];
-
 /* ================= UTIL ================= */
 const addMonths = (dateStr, months) => {
   if (!dateStr) return "";
@@ -29,8 +26,7 @@ const addMonths = (dateStr, months) => {
 /* ================= COMPONENT ================= */
 export default function CoachingEnrollment() {
   const { toast } = useToast();
-  const ITEMS_PER_PAGE = 10;
-
+  const ITEMS_PER_PAGE = 8;
   const [page, setPage] = useState(1);
   const [enrollments, setEnrollments] = useState([]);
   const [batches, setBatches] = useState([]);
@@ -40,42 +36,46 @@ export default function CoachingEnrollment() {
   const [discountCodeInput, setDiscountCodeInput] = useState("");
   const [appliedDiscounts, setAppliedDiscounts] = useState([]);
   const [discountsList, setDiscountsList] = useState([]);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const [tempFilters, setTempFilters] = useState(filters);
+
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const [form, setForm] = useState({
     playerName: "",
     age: "",
     mobile: "",
     email: "",
-
     address: {
       country: "India",
       state: "Maharashtra",
       city: "",
       localAddress: "",
     },
-
     batchName: "",
     coachName: "",
     monthlyFee: "",
     planType: "monthly",
     startDate: "",
     endDate: "",
-
     baseAmount: 0,
     totalDiscountAmount: 0,   // ✅ NEW
     finalAmount: 0,           // ✅ IMPORTANT
-
     paymentMode: "cash",
     paymentStatus: "paid",
   });
-
 
   const normalize = (str = "") =>
     str.trim().toLowerCase();
 
   const findExistingPlayer = (name) => {
     if (!name) return null;
-
     return enrollments
       .slice()
       .reverse() // latest record first
@@ -84,8 +84,6 @@ export default function CoachingEnrollment() {
           normalize(e.playerName) === normalize(name)
       );
   };
-
-
   /* ================= FETCH ================= */
   const fetchAll = async () => {
     try {
@@ -94,7 +92,6 @@ export default function CoachingEnrollment() {
         api.get("/batches"),
         api.get("/discounts"),
       ]);
-
       setEnrollments(eRes.data || []);
       setBatches(bRes.data || []);
       setDiscountsList(dRes.data || []);
@@ -106,7 +103,6 @@ export default function CoachingEnrollment() {
       });
     }
   };
-
   useEffect(() => {
     fetchAll();
   }, []);
@@ -114,30 +110,23 @@ export default function CoachingEnrollment() {
   const recalculateAmounts = (discounts) => {
     let runningTotal = form.baseAmount;
     let totalDiscount = 0;
-
     discounts.forEach((d) => {
       let discountValue = 0;
-
       if (d.type === "percentage") {
         discountValue = (runningTotal * d.value) / 100;
       } else {
         discountValue = d.value;
       }
-
       runningTotal -= discountValue;
       totalDiscount += discountValue;
     });
-
     const final = Math.max(0, Math.round(runningTotal));
-
     setForm((prev) => ({
       ...prev,
       totalDiscountAmount: Math.round(totalDiscount),
       finalAmount: final,
     }));
   };
-
-
 
   useEffect(() => {
     if (["cash", "upi"].includes(form.paymentMode)) {
@@ -212,9 +201,9 @@ export default function CoachingEnrollment() {
           <Button
             variant="outline"
             disabled={disabled}
-            className="w-full justify-start text-left font-normal h-10 bg-white border border-gray-300"
+            className="w-full justify-start text-left font-normal h-10 bg-white border border-gray-300 truncate"
           >
-            <CalendarIcon className="mr-2 h-4 w-4" />
+            <CalendarIcon className="mr-0 h-4 w-4" />
             {value ? format(new Date(value), "PPP") : "Pick a date"}
           </Button>
         </PopoverTrigger>
@@ -242,7 +231,7 @@ export default function CoachingEnrollment() {
             }}
             initialFocus
             classNames={{
-              day: "h-9 w-9 p-0 font-normal rounded-md transition-colors hover:bg-green-100 hover:text-green-900",
+              day: "h-7 w-7 p-0 font-normal rounded-md transition-colors hover:bg-green-100 hover:text-green-900",
               day_selected:
                 "bg-green-600 text-white hover:bg-green-600 hover:text-white",
               day_today:
@@ -255,8 +244,6 @@ export default function CoachingEnrollment() {
       </Popover>
     );
   }
-
-
   /* ================= MAP BACKEND → FORM ================= */
   const mapEnrollmentToForm = (e) => {
     return {
@@ -288,11 +275,9 @@ export default function CoachingEnrollment() {
       paymentStatus: e.paymentStatus || "unpaid",
     };
   };
-
   const sports = [...new Set(enrollments.map((e) => e.sportName).filter(Boolean))];
   const batchOptions = [...new Set(enrollments.map((e) => e.batchName).filter(Boolean))];
   const coaches = [...new Set(enrollments.map((e) => e.coachName).filter(Boolean))];
-
   /* ================= ACTIONS ================= */
   const openAdd = () => {
     setForm({
@@ -303,35 +288,24 @@ export default function CoachingEnrollment() {
     setSelected(null);
     setDrawer("add");
   };
-
-
   const openView = (e) => {
     setSelected(e);
     setForm(mapEnrollmentToForm(e));
-
-    // 🔥 IMPORTANT: load discount breakdown
     setAppliedDiscounts(e.discounts || []);
-
     setDrawer("view");
   };
-
-
   const openEdit = (e) => {
     setSelected(e);
     setForm(mapEnrollmentToForm(e));
     setDrawer("edit");
   };
-
   /* ================= BATCH & PLAN CHANGE ================= */
   const handleBatchChange = (batchName) => {
     const b = batches.find((x) => x.name === batchName);
     if (!b) return;
-
     const months = form.planType === "quarterly" ? 3 : 1;
     const base = (b.monthlyFee || 0) * months;
-
     setAppliedDiscounts([]);
-
     setForm((prev) => ({
       ...prev,
       batchName: b.name,
@@ -344,16 +318,12 @@ export default function CoachingEnrollment() {
     }));
   };
 
-
   const handlePlanChange = (plan) => {
     const b = batches.find((x) => x.name === form.batchName);
     if (!b) return;
-
     const months = plan === "quarterly" ? 3 : 1;
     const base = (form.monthlyFee || 0) * months;
-
     setAppliedDiscounts([]);
-
     setForm((prev) => ({
       ...prev,
       planType: plan,
@@ -411,36 +381,28 @@ export default function CoachingEnrollment() {
       toast({ title: "Error", description: "Failed to delete enrollment", variant: "destructive" });
     }
   };
-
   /* ================= INVOICE HANDLER ================= */
-
   const navigate = useNavigate();
-
   const handleInvoiceAction = async (id, action) => {
     if (action === "view") {
       navigate(`/admin/invoice/${id}`);
     }
-
     if (action === "download") {
       try {
         const res = await api.get(
           `/invoice/enrollment/${id}/download`,
           { responseType: "blob" }
         );
-
         const blob = new Blob([res.data], {
           type: "application/pdf",
         });
-
         const url = window.URL.createObjectURL(blob);
-
         const a = document.createElement("a");
         a.href = url;
         a.download = `Invoice-${id}.pdf`;
         document.body.appendChild(a);
         a.click();
         a.remove();
-
         window.URL.revokeObjectURL(url);
       } catch (err) {
         console.error("Download error:", err);
@@ -452,9 +414,6 @@ export default function CoachingEnrollment() {
       }
     }
   };
-
-
-
   /* ================= GET STATUS ================= */
   const getEnrollmentStatus = (e) => {
     if (e.paymentStatus !== "paid") return { label: "Pending", color: "bg-orange-100 text-orange-700" };
@@ -479,12 +438,21 @@ export default function CoachingEnrollment() {
 
   const totalPages = Math.ceil(filteredEnrollments.length / ITEMS_PER_PAGE);
   const paginatedEnrollments = filteredEnrollments.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
-
   useEffect(() => setPage(1), [filters]);
-
   const filterTriggerClass = "h-9 text-sm bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-green-600";
   const selectTriggerClass = "w-full h-10 text-sm bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-green-600";
   const selectItemClass = `cursor-pointer transition-colors data-[highlighted]:bg-green-100 data-[highlighted]:text-green-900 data-[state=checked]:bg-green-600 data-[state=checked]:text-white`;
+
+  const handleRefresh = async () => {
+    setFilters({
+      sport: "",
+      batch: "",
+      coach: "",
+      status: "",
+    });
+    setPage(1);
+    await fetchAll();
+  };
 
   /* ================= UI ================= */
   return (
@@ -494,49 +462,136 @@ export default function CoachingEnrollment() {
         <Button onClick={openAdd} className="bg-green-700">+ Add New Enrollment</Button>
       </div>
 
-      {/* FILTERS */}
-      <div className="bg-white border rounded-xl p-4 mb-4">
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-          <Select value={filters.sport || "all"} onValueChange={(value) => setFilters((p) => ({ ...p, sport: value === "all" ? "" : value }))}>
-            <SelectTrigger className={filterTriggerClass}><SelectValue placeholder="All Sports" /></SelectTrigger>
-            <SelectContent position="popper" sideOffset={4} className="z-[9999] bg-white border shadow-lg">
-              <SelectItem value="all" className={selectItemClass}>All Sports</SelectItem>
-              {sports.map((s) => <SelectItem key={s} value={s} className={selectItemClass}>{s}</SelectItem>)}
+      <div className="bg-white border rounded-xl p-3 sm:p-4 mb-4">
+
+        {/* ================= DESKTOP FILTERS ================= */}
+        <div className="hidden md:grid grid-cols-2 md:grid-cols-6 gap-3">
+
+          {/* SPORTS */}
+          <Select
+            value={filters.sport || "all"}
+            onValueChange={(value) =>
+              setFilters((p) => ({
+                ...p,
+                sport: value === "all" ? "" : value,
+              }))
+            }
+          >
+            <SelectTrigger className={filterTriggerClass}>
+              <SelectValue placeholder="All Sports" />
+            </SelectTrigger>
+            <SelectContent className="z-[9999] bg-white border shadow-lg">
+              <SelectItem value="all" className={selectItemClass}>
+                All Sports
+              </SelectItem>
+              {sports.map((s) => (
+                <SelectItem key={s} value={s} className={selectItemClass}>
+                  {s}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
-          <Select value={filters.batch || "all"} onValueChange={(value) => setFilters((p) => ({ ...p, batch: value === "all" ? "" : value }))}>
-            <SelectTrigger className={filterTriggerClass}><SelectValue placeholder="All Batches" /></SelectTrigger>
-            <SelectContent position="popper" sideOffset={4} className="z-[9999] bg-white border shadow-lg">
-              <SelectItem value="all" className={selectItemClass}>All Batches</SelectItem>
-              {batchOptions.map((b) => <SelectItem key={b} value={b} className={selectItemClass}>{b}</SelectItem>)}
+          {/* BATCH */}
+          <Select
+            value={filters.batch || "all"}
+            onValueChange={(value) =>
+              setFilters((p) => ({
+                ...p,
+                batch: value === "all" ? "" : value,
+              }))
+            }
+          >
+            <SelectTrigger className={filterTriggerClass}>
+              <SelectValue placeholder="All Batches" />
+            </SelectTrigger>
+            <SelectContent className="z-[9999] bg-white border shadow-lg">
+              <SelectItem value="all" className={selectItemClass}>
+                All Batches
+              </SelectItem>
+              {batchOptions.map((b) => (
+                <SelectItem key={b} value={b} className={selectItemClass}>
+                  {b}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
-          <Select value={filters.coach || "all"} onValueChange={(value) => setFilters((p) => ({ ...p, coach: value === "all" ? "" : value }))}>
-            <SelectTrigger className={filterTriggerClass}><SelectValue placeholder="All Coaches" /></SelectTrigger>
-            <SelectContent position="popper" sideOffset={4} className="z-[9999] bg-white border shadow-lg">
-              <SelectItem value="all" className={selectItemClass}>All Coaches</SelectItem>
-              {coaches.map((c) => <SelectItem key={c} value={c} className={selectItemClass}>{c}</SelectItem>)}
+          {/* COACH */}
+          <Select
+            value={filters.coach || "all"}
+            onValueChange={(value) =>
+              setFilters((p) => ({
+                ...p,
+                coach: value === "all" ? "" : value,
+              }))
+            }
+          >
+            <SelectTrigger className={filterTriggerClass}>
+              <SelectValue placeholder="All Coaches" />
+            </SelectTrigger>
+            <SelectContent className="z-[9999] bg-white border shadow-lg">
+              <SelectItem value="all" className={selectItemClass}>
+                All Coaches
+              </SelectItem>
+              {coaches.map((c) => (
+                <SelectItem key={c} value={c} className={selectItemClass}>
+                  {c}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
-          <Select value={filters.status || "all"} onValueChange={(value) => setFilters((p) => ({ ...p, status: value === "all" ? "" : value }))}>
-            <SelectTrigger className={filterTriggerClass}><SelectValue placeholder="All Status" /></SelectTrigger>
-            <SelectContent position="popper" sideOffset={4} className="z-[9999] bg-white border shadow-lg">
-              <SelectItem value="all" className={selectItemClass}>All Status</SelectItem>
-              <SelectItem value="Pending" className={selectItemClass}>Pending</SelectItem>
-              <SelectItem value="Active" className={selectItemClass}>Active</SelectItem>
-              <SelectItem value="Expiring" className={selectItemClass}>Expiring</SelectItem>
-              <SelectItem value="Expired" className={selectItemClass}>Expired</SelectItem>
+          {/* STATUS */}
+          <Select
+            value={filters.status || "all"}
+            onValueChange={(value) =>
+              setFilters((p) => ({
+                ...p,
+                status: value === "all" ? "" : value,
+              }))
+            }
+          >
+            <SelectTrigger className={filterTriggerClass}>
+              <SelectValue placeholder="All Status" />
+            </SelectTrigger>
+            <SelectContent className="z-[9999] bg-white border shadow-lg">
+              <SelectItem value="all" className={selectItemClass}>
+                All Status
+              </SelectItem>
+              {["Pending", "Active", "Expiring", "Expired"].map((s) => (
+                <SelectItem key={s} value={s} className={selectItemClass}>
+                  {s}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
+        {/* ================= MOBILE ICON ROW ================= */}
 
-        {/* TABLE */}
-        <div className="bg-white rounded-xl border mt-4 overflow-x-auto">
+        <div className="md:hidden flex justify-between gap-3">
+          {/* FILTER ICON */}
+          <button
+            onClick={() => {
+              setTempFilters(filters);
+              setMobileFilterOpen(true);
+            }}
+            className="h-8 w-8 flex items-center justify-center rounded-xl border bg-gray-50 hover:bg-gray-100 transition"
+          >
+            <SlidersHorizontal className="w-5 h-5 text-gray-700" />
+          </button>
+          {/* REFRESH ICON */}
+          <button
+            onClick={handleRefresh}
+            className="h-8 w-8 flex items-center justify-center rounded-xl border bg-gray-50 hover:bg-gray-100 transition"
+          >
+            <RotateCcw className="w-5 h-5 text-gray-700" />
+          </button>
+        </div>
+        {/* ================= DESKTOP TABLE ================= */}
+        <div className="hidden md:block bg-white rounded-xl border mt-4 overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 ">
+            <thead className="bg-gray-50">
               <tr className="text-left">
                 <th className="p-3">Student</th>
                 <th>Age</th>
@@ -558,18 +613,29 @@ export default function CoachingEnrollment() {
                     <td className="max-w-[220px] truncate">{e.batchName}</td>
                     <td>{e.startDate?.slice(0, 10)}</td>
                     <td>
-                      <span className={`px-3 py-1 rounded-full text-[0.65rem] ${status.color}`}>{status.label}</span>
+                      <span className={`px-3 py-1 rounded-full text-[0.65rem] ${status.color}`}>
+                        {status.label}
+                      </span>
                     </td>
                     <td className="text-right pr-3">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <button className="p-2 hover:bg-gray-100 rounded"><MoreHorizontal className="w-5 h-5" /></button>
+                          <button className="p-2 hover:bg-gray-100 rounded">
+                            <MoreHorizontal className="w-5 h-5" />
+                          </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent className="z-[9999] bg-white border shadow-lg align-end cursor-pointer">
+                        <DropdownMenuContent className="z-[9999] bg-white border shadow-lg">
                           <DropdownMenuItem onClick={() => openView(e)}>View</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openEdit(e)}>Edit</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleInvoiceAction(e._id, "view")}>  View Invoice </DropdownMenuItem>
-                          <DropdownMenuItem className="text-red-600" onClick={() => deleteEnrollment(e._id)}>Delete</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleInvoiceAction(e._id, "view")}>
+                            View Invoice
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-red-600"
+                            onClick={() => deleteEnrollment(e._id)}
+                          >
+                            Delete
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
@@ -578,6 +644,69 @@ export default function CoachingEnrollment() {
               })}
             </tbody>
           </table>
+        </div>
+        {/* ================= MOBILE CARD VIEW ================= */}
+        <div className="md:hidden mt-4 space-y-4">
+          {filteredEnrollments.map((e) => {
+            const status = getEnrollmentStatus(e);
+
+            return (
+              <div
+                key={e._id}
+                className="bg-white border rounded-xl p-2 shadow-sm"
+              >
+                {/* Top Section */}
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="font-semibold text-base">{e.playerName}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Age {e.age} • {e.sportName}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-3 py-1 rounded-full text-[0.65rem] ${status.color}`}
+                    >
+                      {status.label}
+                    </span>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="p-1 hover:bg-gray-100 rounded">
+                          <MoreHorizontal className="w-5 h-5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="z-[9999] bg-white border shadow-lg">
+                        <DropdownMenuItem onClick={() => openView(e)}>View</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEdit(e)}>Edit</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleInvoiceAction(e._id, "view")}>
+                          View Invoice
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-red-600"
+                          onClick={() => deleteEnrollment(e._id)}
+                        >
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+
+                {/* Batch Section */}
+                <div className="mt-3 bg-gray-50 rounded-lg px-3 py-2 text-sm">
+                  {e.batchName}
+                </div>
+
+                {/* Bottom Info */}
+                <div className="mt-3 flex justify-between text-sm text-muted-foreground">
+                  <span>{e.startDate?.slice(0, 10)}</span>
+                  <span>{e.sportName}</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* PAGINATION */}
@@ -597,7 +726,14 @@ export default function CoachingEnrollment() {
 
       {/* DRAWER */}
       <Sheet open={!!drawer} onOpenChange={() => setDrawer(null)}>
-        <SheetContent side="right" className="w-[30vw] h-screen flex flex-col">
+        <SheetContent
+          side={isMobile ? "bottom" : "right"}
+          className={
+            isMobile
+              ? "h-[92vh] rounded-t-2xl flex flex-col px-4 pt-4 pb-2"
+              : "w-[30vw] h-screen flex flex-col"
+          }
+        >
           <SheetHeader className="shrink-0">
             <SheetTitle>{drawer === "add" ? "Add Enrollment" : drawer === "edit" ? "Edit Enrollment" : "View Enrollment"}</SheetTitle>
           </SheetHeader>
@@ -849,7 +985,6 @@ export default function CoachingEnrollment() {
                   <SelectTrigger className={selectTriggerClass}>
                     <SelectValue />
                   </SelectTrigger>
-
                   <SelectContent
                     position="popper"
                     className="z-[9999] bg-white border shadow-lg"
@@ -863,15 +998,11 @@ export default function CoachingEnrollment() {
                   </SelectContent>
                 </Select>
               </div>
-
-
               {/* ================= TOTAL AMOUNT ================= */}
               <div className="col-span-2">
                 <label className="text-sm font-medium">Total Amount</label>
                 <Input disabled value={`₹ ${form.finalAmount || 0}`} />
               </div>
-
-
               {/* ================= DISCOUNT SECTION ================= */}
               <div className="col-span-2 space-y-3 mt-4">
 
@@ -954,12 +1085,7 @@ export default function CoachingEnrollment() {
 
                   </div>
                 )}
-
               </div>
-
-
-
-
             </div>
           </div>
           {drawer !== "view" && (
@@ -967,6 +1093,139 @@ export default function CoachingEnrollment() {
               {drawer === "add" ? "Add Enrollment" : "Update Enrollment"}
             </Button>
           )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Mobile Filter dropdown */}
+      <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
+        <SheetContent
+          side="bottom"
+          className="h-[50vh] rounded-t-2xl p-4"
+        >
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold">Filters</h2>
+          </div>
+
+          <div className="space-y-4">
+
+            {/* SPORTS */}
+            <Select
+              value={tempFilters.sport || "all"}
+              onValueChange={(value) =>
+                setTempFilters((p) => ({
+                  ...p,
+                  sport: value === "all" ? "" : value,
+                }))
+              }
+            >
+              <SelectTrigger className={filterTriggerClass}>
+                <SelectValue placeholder="All Sports" />
+              </SelectTrigger>
+              <SelectContent className="z-[9999] bg-white border shadow-lg rounded-lg">
+                <SelectItem value="all" className={selectItemClass}>All Sports</SelectItem>
+                {sports.map((s) => (
+                  <SelectItem key={s} value={s} className={selectItemClass}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* BATCH */}
+            <Select
+              value={tempFilters.batch || "all"}
+              onValueChange={(value) =>
+                setTempFilters((p) => ({
+                  ...p,
+                  batch: value === "all" ? "" : value,
+                }))
+              }
+            >
+              <SelectTrigger className={filterTriggerClass}>
+                <SelectValue placeholder="All Batches" />
+              </SelectTrigger>
+              <SelectContent className="z-[9999] bg-white border shadow-lg rounded-lg">
+                <SelectItem value="all" className={selectItemClass}>All Batches</SelectItem>
+                {batchOptions.map((b) => (
+                  <SelectItem key={b} value={b} className={selectItemClass}>
+                    {b}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* COACH */}
+            <Select
+              value={tempFilters.coach || "all"}
+              onValueChange={(value) =>
+                setTempFilters((p) => ({
+                  ...p,
+                  coach: value === "all" ? "" : value,
+                }))
+              }
+            >
+              <SelectTrigger className={filterTriggerClass}>
+                <SelectValue placeholder="All Coaches" />
+              </SelectTrigger>
+              <SelectContent className="z-[9999] bg-white border shadow-lg rounded-lg">
+                <SelectItem value="all" className={selectItemClass}>All Coaches</SelectItem>
+                {coaches.map((c) => (
+                  <SelectItem key={c} value={c} className={selectItemClass}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* STATUS */}
+            <Select
+              value={tempFilters.status || "all"}
+              onValueChange={(value) =>
+                setTempFilters((p) => ({
+                  ...p,
+                  status: value === "all" ? "" : value,
+                }))
+              }
+            >
+              <SelectTrigger className={filterTriggerClass}>
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent className="z-[9999] bg-white border shadow-lg rounded-lg">
+                <SelectItem value="all" className={selectItemClass}>All Status</SelectItem>
+                {["Pending", "Active", "Expiring", "Expired"].map((s) => (
+                  <SelectItem key={s} value={s} className={selectItemClass}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {/* FOOTER */}
+          <div className="flex gap-3 mt-6">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() =>
+                setTempFilters({
+                  sport: "",
+                  batch: "",
+                  coach: "",
+                  status: "",
+                })
+              }
+            >
+              Clear all
+            </Button>
+            <Button
+              className="flex-1 bg-green-700"
+              onClick={() => {
+                setFilters(tempFilters);
+                setMobileFilterOpen(false);
+              }}
+            >
+              Apply
+            </Button>
+          </div>
         </SheetContent>
       </Sheet>
     </div>

@@ -8,7 +8,7 @@ export default function AdminLayout() {
       <Sidebar />
 
         {/* ✅ THIS MUST SCROLL */}
-        <main className="flex-1 overflow-y-auto mt-14 sm:mt-0 p-1 sm:p-6 ">
+        <main className="flex-1 overflow-y-auto mt-14 sm:mt-0 p-2 sm:p-6 ">
           <Outlet />
         </main>
     </div>

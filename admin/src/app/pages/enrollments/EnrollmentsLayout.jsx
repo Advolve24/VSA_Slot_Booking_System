@@ -6,31 +6,25 @@ export default function EnrollmentsLayout() {
   const navigate = useNavigate();
 
   return (
-    <div className="h-screen overflow-hidden flex flex-col">
+    <div className=" flex flex-col overflow-hidden px-0 sm:px-2 py-4">
+      
       {/* HEADER */}
-      <div className="flex items-center justify-between pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 ">
+        
+        {/* Left Section */}
         <div>
-          <h1 className="text-2xl font-bold text-green-800">
+          <h1 className="text-xl sm:text-2xl font-bold text-green-800">
             Enrollment Management
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm sm:text-base text-muted-foreground">
             Manage student enrollments, coaching batches.
           </p>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate(0)}
-          className="flex items-center gap-2 cursor-pointer"
-        >
-          <RotateCcw className="w-4 h-4" />
-          Refresh
-        </Button>
       </div>
 
       {/* CONTENT */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1  pt-4">
         <Outlet />
       </div>
     </div>
