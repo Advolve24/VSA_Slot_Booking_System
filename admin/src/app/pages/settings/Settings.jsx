@@ -21,7 +21,7 @@ export default function SettingsPage() {
   }, []);
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="space-y-6 max-w-6xl mt-4">
 
       {/* ================= HEADER ================= */}
       <div>
