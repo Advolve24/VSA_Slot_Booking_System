@@ -73,7 +73,6 @@ export default function CoachingEnrollment() {
 
   const normalize = (str = "") =>
     str.trim().toLowerCase();
-
   const findExistingPlayer = (name) => {
     if (!name) return null;
     return enrollments
@@ -138,11 +137,9 @@ export default function CoachingEnrollment() {
   }, [form.paymentMode]);
 
   const [cities, setCities] = useState([]);
-
   useEffect(() => {
     setCities(getMaharashtraCities());
   }, []);
-
   const applyDiscountCode = () => {
     if (!discountCodeInput) return;
 

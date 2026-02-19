@@ -18,6 +18,15 @@ export default function SportsPage() {
   const [icon, setIcon] = useState(null);
   const [preview, setPreview] = useState(null);
 
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
   /* ================= FETCH ================= */
   const fetchSports = async () => {
     const res = await api.get("/sports");
@@ -90,37 +99,60 @@ export default function SportsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-1 sm:px-0">
+
       {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between gap-4 mt-4">
         <h2 className="text-2xl font-bold text-green-800">Sports</h2>
-        <Button onClick={openAdd}>
+
+        <Button
+          onClick={openAdd}
+          className="w-[50%] sm:w-auto"
+        >
           <Plus className="w-4 h-4 mr-2" /> Add Sport
         </Button>
       </div>
 
-      {/* FULL IMAGE CARD GRID */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+      {/* GRID */}
+      <div className="
+        grid 
+        grid-cols-2 
+        sm:grid-cols-2 
+        md:grid-cols-3 
+        lg:grid-cols-5 
+        gap-4 sm:gap-6
+      ">
         {sports.map((s) => (
           <div
             key={s._id}
-            className="relative h-[200px] rounded-xl overflow-hidden shadow-md border"
+            className="
+              relative 
+              h-[160px] sm:h-[200px] 
+              rounded-xl 
+              overflow-hidden 
+              shadow-md 
+              border
+              transition-transform 
+              hover:scale-[1.02]
+            "
           >
-            {/* IMAGE FULL COVER */}
+            {/* IMAGE */}
             <img
               src={`${BACKEND_BASE}${s.iconUrl}`}
               alt={s.name}
               className="absolute inset-0 w-full h-full object-cover"
             />
 
-            {/* DARK GRADIENT */}
+            {/* GRADIENT */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
             {/* BOTTOM BAR */}
-            <div className="absolute bottom-0 left-0 right-0 px-4 py-3 flex items-center justify-between text-white">
-              <span className="font-semibold truncate">{s.name}</span>
+            <div className="absolute bottom-0 left-0 right-0 px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between text-white">
+              <span className="font-semibold text-sm sm:text-base truncate">
+                {s.name}
+              </span>
 
-              <div className="flex gap-3">
+              <div className="flex gap-2 sm:gap-3">
                 <button
                   onClick={() => openEdit(s)}
                   className="hover:text-blue-300"
@@ -140,9 +172,16 @@ export default function SportsPage() {
         ))}
       </div>
 
-      {/* ADD / EDIT SHEET */}
+      {/* SHEET */}
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent className="w-full sm:w-[420px]">
+        <SheetContent
+          side={isMobile ? "bottom" : "right"}
+          className={
+            isMobile
+              ? "h-[70vh] rounded-t-2xl px-4 pt-4"
+              : "w-[420px]"
+          }
+        >
           <h3 className="text-lg font-semibold mb-4">
             {editing ? "Edit Sport" : "Add Sport"}
           </h3>

@@ -4,26 +4,45 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Pencil } from "lucide-react";
+import { Trash2, Pencil, MoreHorizontal } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
+
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
+
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 
 export default function DiscountTab() {
   const { toast } = useToast();
-
   const [discounts, setDiscounts] = useState([]);
   const [sports, setSports] = useState([]);
   const [batches, setBatches] = useState([]);
   const [editingId, setEditingId] = useState(null);
-
   const initialForm = {
     title: "",
     code: "",
     type: "percentage",
     value: "",
     applicableFor: "enrollment",
-    planType: "",
     sportId: "",
     batchId: "",
-    minSlots: "",
     validFrom: "",
     validTill: "",
   };
@@ -52,36 +71,16 @@ export default function DiscountTab() {
     setBatches(res.data || []);
   };
 
-  /* ================= FILTER BATCH BY SPORT ================= */
   const filteredBatches = form.sportId
-  ? batches.filter(
-      (b) =>
-        String(b.sportId) === String(form.sportId)
-    )
-  : batches;
+    ? batches.filter((b) => String(b.sportId) === String(form.sportId))
+    : batches;
 
-
-  /* ================= CREATE OR UPDATE ================= */
+  /* ================= SAVE ================= */
   const handleSubmit = async () => {
     try {
       const payload = {
-        title: form.title,
-        code: form.code || null,
-        type: form.type,
+        ...form,
         value: Number(form.value),
-        applicableFor: form.applicableFor,
-        planType:
-          form.applicableFor === "enrollment"
-            ? form.planType || null
-            : null,
-        sportId: form.sportId || null,
-        batchId: form.batchId || null,
-        minSlots:
-          form.applicableFor === "turf"
-            ? Number(form.minSlots) || 0
-            : 0,
-        validFrom: form.validFrom || null,
-        validTill: form.validTill || null,
       };
 
       if (editingId) {
@@ -95,70 +94,115 @@ export default function DiscountTab() {
       setForm(initialForm);
       setEditingId(null);
       fetchDiscounts();
-
     } catch (err) {
       toast({
         variant: "destructive",
-        title:
-          err?.response?.data?.message ||
-          "Operation failed",
+        title: err?.response?.data?.message || "Operation failed",
       });
     }
   };
 
-  /* ================= EDIT ================= */
   const handleEdit = (d) => {
-  setEditingId(d._id);
+    setEditingId(d._id);
+    setForm({
+      ...d,
+      sportId: d.sportId?._id || d.sportId || "",
+      batchId: d.batchId?._id || d.batchId || "",
+      validFrom: d.validFrom?.slice(0, 10) || "",
+      validTill: d.validTill?.slice(0, 10) || "",
+    });
+  };
 
-  setForm({
-    title: d.title || "",
-    code: d.code || "",
-    type: d.type,
-    value: d.value,
-    applicableFor: d.applicableFor,
-    planType: d.planType || "",
-
-    // 🔥 FIX HERE
-    sportId: d.sportId?._id || d.sportId || "",
-    batchId: d.batchId?._id || d.batchId || "",
-
-    minSlots: d.minSlots || "",
-    validFrom: d.validFrom
-      ? d.validFrom.slice(0, 10)
-      : "",
-    validTill: d.validTill
-      ? d.validTill.slice(0, 10)
-      : "",
-  });
-};
-
-  /* ================= DELETE ================= */
   const handleDelete = async (id) => {
     await api.delete(`/discounts/${id}`);
     toast({ title: "Discount Deleted" });
     fetchDiscounts();
   };
 
-  /* ================= TOGGLE ACTIVE ================= */
   const toggleActive = async (discount) => {
     await api.put(`/discounts/${discount._id}`, {
       isActive: !discount.isActive,
     });
-
     fetchDiscounts();
   };
 
-  return (
-    <div className="bg-white border rounded-2xl p-6 shadow-sm space-y-6">
+  const selectTriggerClass =
+    "w-full h-10 text-sm bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-green-600";
 
+  const selectItemClass = `
+    cursor-pointer
+    transition-colors
+    data-[highlighted]:bg-green-100
+    data-[highlighted]:text-green-900
+    data-[state=checked]:bg-green-600
+    data-[state=checked]:text-white
+  `;
+
+  function DatePicker({ value, onChange, disabled }) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return (
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            disabled={disabled}
+            className="w-full justify-start text-left font-normal h-10 bg-white border border-gray-300"
+          >
+            <CalendarIcon className="mr-2 h-4 w-4" />
+            {value ? format(new Date(value), "dd MMM yyyy") : "Pick a date"}
+          </Button>
+        </PopoverTrigger>
+
+        <PopoverContent
+          align="start"
+          side="bottom"
+          sideOffset={8}
+          className="w-auto p-0 z-[9999] bg-white border shadow-lg"
+        >
+          <Calendar
+            mode="single"
+            selected={value ? new Date(value) : undefined}
+            onSelect={(date) => {
+              if (!date) return;
+              const d = new Date(date);
+              d.setHours(0, 0, 0, 0);
+              onChange(format(d, "yyyy-MM-dd"));
+            }}
+            disabled={(date) => {
+              const d = new Date(date);
+              d.setHours(0, 0, 0, 0);
+              return d < today; // disable past dates
+            }}
+            initialFocus
+            classNames={{
+              day: "h-9 w-9 rounded-md hover:bg-green-100 hover:text-green-900 transition",
+              day_selected:
+                "bg-green-600 text-white hover:bg-green-600 hover:text-white",
+              day_today:
+                "border border-green-600 text-green-700 font-semibold",
+              day_outside: "text-muted-foreground opacity-50",
+              day_disabled:
+                "text-muted-foreground opacity-30 cursor-not-allowed",
+            }}
+          />
+        </PopoverContent>
+      </Popover>
+    );
+  }
+  return (
+    <div className="bg-white border rounded-2xl shadow-sm p-4 md:p-6 space-y-6">
+
+      {/* HEADER */}
       <h2 className="text-lg font-semibold">
         {editingId ? "Edit Discount" : "Create Discount"}
       </h2>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      {/* FORM */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
 
-        {/* TITLE */}
-        <div className="space-y-2">
+        <div>
           <Label>Discount Title *</Label>
           <Input
             value={form.title}
@@ -168,9 +212,8 @@ export default function DiscountTab() {
           />
         </div>
 
-        {/* CODE */}
-        <div className="space-y-2">
-          <Label>Discount Code (Optional)</Label>
+        <div>
+          <Label>Discount Code</Label>
           <Input
             value={form.code}
             onChange={(e) =>
@@ -180,23 +223,30 @@ export default function DiscountTab() {
         </div>
 
         {/* TYPE */}
-        <div className="space-y-2">
-          <Label>Discount Type *</Label>
-          <select
-            className="border rounded-md p-2 w-full"
+        <div>
+          <Label>Discount Type</Label>
+          <Select
             value={form.type}
-            onChange={(e) =>
-              setForm({ ...form, type: e.target.value })
+            onValueChange={(v) =>
+              setForm({ ...form, type: v })
             }
           >
-            <option value="percentage">Percentage (%)</option>
-            <option value="flat">Flat (₹)</option>
-          </select>
+            <SelectTrigger className={selectTriggerClass}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[9999] bg-white border shadow-lg">
+              <SelectItem value="percentage" className={selectItemClass}>
+                Percentage (%)
+              </SelectItem>
+              <SelectItem value="flat" className={selectItemClass}>
+                Flat (₹)
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        {/* VALUE */}
-        <div className="space-y-2">
-          <Label>Value *</Label>
+        <div>
+          <Label>Value</Label>
           <Input
             type="number"
             value={form.value}
@@ -207,110 +257,122 @@ export default function DiscountTab() {
         </div>
 
         {/* APPLICABLE */}
-        <div className="space-y-2">
-          <Label>Applicable For *</Label>
-          <select
-            className="border rounded-md p-2 w-full"
+        <div>
+          <Label>Applicable For</Label>
+          <Select
             value={form.applicableFor}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                applicableFor: e.target.value,
-              })
+            onValueChange={(v) =>
+              setForm({ ...form, applicableFor: v })
             }
           >
-            <option value="enrollment">Enrollment</option>
-            <option value="turf">Turf</option>
-          </select>
+            <SelectTrigger className={selectTriggerClass}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[9999] bg-white border shadow-lg">
+              <SelectItem value="enrollment" className={selectItemClass}>
+                Enrollment
+              </SelectItem>
+              <SelectItem value="turf" className={selectItemClass}>
+                Turf
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        {/* PLAN TYPE */}
-        {form.applicableFor === "enrollment" && (
-          <div className="space-y-2">
-            <Label>Plan Type (Optional)</Label>
-            <select
-              className="border rounded-md p-2 w-full"
-              value={form.planType}
-              onChange={(e) =>
-                setForm({ ...form, planType: e.target.value })
-              }
-            >
-              <option value="">All Plans</option>
-              <option value="monthly">Monthly</option>
-              <option value="quarterly">Quarterly</option>
-            </select>
-          </div>
-        )}
-
         {/* SPORT */}
-        <div className="space-y-2">
-          <Label>Sport (Optional)</Label>
-          <select
-            className="border rounded-md p-2 w-full"
-            value={form.sportId}
-            onChange={(e) =>
+        <div>
+          <Label>Sport</Label>
+          <Select
+            value={form.sportId || "all"}
+            onValueChange={(v) =>
               setForm({
                 ...form,
-                sportId: e.target.value,
+                sportId: v === "all" ? "" : v,
                 batchId: "",
               })
             }
           >
-            <option value="">All Sports</option>
-            {sports.map((s) => (
-              <option key={s._id} value={s._id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className={selectTriggerClass}>
+              <SelectValue placeholder="All Sports" />
+            </SelectTrigger>
+            <SelectContent className="z-[9999] bg-white border shadow-lg">
+              <SelectItem value="all" className={selectItemClass}>
+                All Sports
+              </SelectItem>
+              {sports.map((s) => (
+                <SelectItem
+                  key={s._id}
+                  value={s._id}
+                  className={selectItemClass}
+                >
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* BATCH */}
-        <div className="space-y-2">
-          <Label>Batch (Optional)</Label>
-          <select
-            className="border rounded-md p-2 w-full"
-            value={form.batchId}
-            onChange={(e) =>
-              setForm({ ...form, batchId: e.target.value })
+        <div>
+          <Label>Batch</Label>
+          <Select
+            value={form.batchId || "all"}
+            onValueChange={(v) =>
+              setForm({
+                ...form,
+                batchId: v === "all" ? "" : v,
+              })
             }
           >
-            <option value="">All Batches</option>
-            {filteredBatches.map((b) => (
-              <option key={b._id} value={b._id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className={selectTriggerClass}>
+              <SelectValue placeholder="All Batches" />
+            </SelectTrigger>
+            <SelectContent className="z-[9999] bg-white border shadow-lg">
+              <SelectItem value="all" className={selectItemClass}>
+                All Batches
+              </SelectItem>
+              {filteredBatches.map((b) => (
+                <SelectItem
+                  key={b._id}
+                  value={b._id}
+                  className={selectItemClass}
+                >
+                  {b.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
-        {/* VALID FROM */}
-        <div className="space-y-2">
+        <div>
           <Label>Valid From</Label>
-          <Input
-            type="date"
+          <DatePicker
             value={form.validFrom}
-            onChange={(e) =>
-              setForm({ ...form, validFrom: e.target.value })
+            onChange={(date) =>
+              setForm({ ...form, validFrom: date })
             }
           />
+
         </div>
 
-        {/* VALID TILL */}
-        <div className="space-y-2">
+        <div>
           <Label>Valid Till</Label>
-          <Input
-            type="date"
+          <DatePicker
             value={form.validTill}
-            onChange={(e) =>
-              setForm({ ...form, validTill: e.target.value })
+            onChange={(date) =>
+              setForm({ ...form, validTill: date })
             }
           />
+
         </div>
       </div>
 
-      <div className="flex gap-3">
-        <Button onClick={handleSubmit} className="bg-green-700">
+      {/* BUTTONS */}
+      <div className="flex flex-col md:flex-row gap-3">
+        <Button
+          onClick={handleSubmit}
+          className="bg-green-700 w-full md:w-auto"
+        >
           {editingId ? "Update Discount" : "Create Discount"}
         </Button>
 
@@ -321,6 +383,7 @@ export default function DiscountTab() {
               setEditingId(null);
               setForm(initialForm);
             }}
+            className="w-full md:w-auto"
           >
             Cancel
           </Button>
@@ -328,52 +391,57 @@ export default function DiscountTab() {
       </div>
 
       {/* LIST */}
-      <div className="pt-6">
+      <div>
         <h3 className="font-semibold mb-4">
           Existing Discounts
         </h3>
 
-        {discounts.map((d) => (
-          <div
-            key={d._id}
-            className="flex justify-between items-center border p-3 rounded-lg mb-2"
-          >
-            <div>
-              <p className="font-medium">
-                {d.title}{" "}
-                {d.type === "percentage"
-                  ? `${d.value}%`
-                  : `₹${d.value}`}
-              </p>
+        <div className="space-y-2">
+          {discounts.map((d) => (
+            <div
+              key={d._id}
+              className="flex justify-between items-center border p-3 rounded-lg"
+            >
+              <div>
+                <p className="font-medium">
+                  {d.title}{" "}
+                  {d.type === "percentage"
+                    ? `${d.value}%`
+                    : `₹${d.value}`}
+                </p>
+                <p className="text-sm text-gray-500">
+                  {d.code && `Code: ${d.code} | `}
+                  {d.isActive ? "Active" : "Inactive"}
+                </p>
+              </div>
 
-              <p className="text-sm text-gray-500">
-                {d.planType && `Plan: ${d.planType} | `}
-                {d.code && `Code: ${d.code} | `}
-                {d.isActive ? "Active" : "Inactive"}
-              </p>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="p-2 hover:bg-gray-100 rounded">
+                    <MoreHorizontal className="w-5 h-5" />
+                  </button>
+                </DropdownMenuTrigger>
+
+                <DropdownMenuContent className="z-[9999] bg-white border shadow-lg">
+                  <DropdownMenuItem onClick={() => handleEdit(d)}>
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => toggleActive(d)}
+                  >
+                    {d.isActive ? "Disable" : "Enable"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-red-600"
+                    onClick={() => handleDelete(d._id)}
+                  >
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-
-            <div className="flex gap-3 items-center">
-              <Pencil
-                className="cursor-pointer text-blue-600"
-                onClick={() => handleEdit(d)}
-              />
-
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => toggleActive(d)}
-              >
-                {d.isActive ? "Disable" : "Enable"}
-              </Button>
-
-              <Trash2
-                className="text-red-500 cursor-pointer"
-                onClick={() => handleDelete(d._id)}
-              />
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );

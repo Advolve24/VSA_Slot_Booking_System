@@ -5,8 +5,7 @@ import { useNavigate } from "react-router-dom";
 export default function UpcomingSlots({ slots = [] }) {
   const navigate = useNavigate();
 
-  const visibleSlots = slots.slice(0, 2);
-  const hasMore = slots.length > 2;
+  const now = new Date();
 
   /* ================= FORMAT TIME ================= */
 
@@ -44,6 +43,80 @@ export default function UpcomingSlots({ slots = [] }) {
     return `${start} – ${end}`;
   };
 
+  /* ================= FILTER EXPIRED SLOTS ================= */
+
+  const processedSlots = slots
+    .map((s) => {
+      const rentalDate = new Date(s.rentalDate);
+      rentalDate.setHours(0, 0, 0, 0);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+
+      // Only today & tomorrow
+      if (
+        rentalDate.getTime() !== today.getTime() &&
+        rentalDate.getTime() !== tomorrow.getTime()
+      ) {
+        return null;
+      }
+
+      let bookingLabel = "Tomorrow";
+
+      // If today → remove expired slot times
+      if (rentalDate.getTime() === today.getTime()) {
+        const validSlots = (s.slots || []).filter((time) => {
+          const [h, m] = time.split(":").map(Number);
+
+          const slotEnd = new Date(s.rentalDate);
+          slotEnd.setHours(h + 1, m, 0, 0);
+
+          return slotEnd > now;
+        });
+
+        if (!validSlots.length) return null;
+
+        const isLive = validSlots.some((time) => {
+          const [h, m] = time.split(":").map(Number);
+
+          const slotStart = new Date(s.rentalDate);
+          slotStart.setHours(h, m, 0, 0);
+
+          const slotEnd = new Date(s.rentalDate);
+          slotEnd.setHours(h + 1, m, 0, 0);
+
+          return now >= slotStart && now < slotEnd;
+        });
+
+        bookingLabel = isLive ? "Live Now" : "Upcoming Today";
+
+        return {
+          ...s,
+          slots: validSlots,
+          bookingLabel,
+        };
+      }
+
+      return {
+        ...s,
+        bookingLabel,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => new Date(a.rentalDate) - new Date(b.rentalDate));
+
+  const visibleSlots = processedSlots.slice(0, 2);
+  const hasMore = processedSlots.length > 2;
+
+  const labelStyles = {
+    "Live Now": "bg-blue-100 text-orange-700",
+    "Upcoming Today": "bg-green-100 text-green-700",
+    "Tomorrow": "bg-purple-100 text-indigo-700",
+  };
+
   return (
     <div className="bg-white border rounded-xl p-5">
 
@@ -52,12 +125,12 @@ export default function UpcomingSlots({ slots = [] }) {
         <div>
           <h2 className="font-semibold">Upcoming Slots</h2>
           <p className="text-xs text-muted-foreground">
-            Next 3 days
+            Today & Tomorrow
           </p>
         </div>
 
         <span className="text-green-600 text-sm font-medium">
-          {slots.length} slots
+          {processedSlots.length} slots
         </span>
       </div>
 
@@ -75,7 +148,7 @@ export default function UpcomingSlots({ slots = [] }) {
                 {format(new Date(s.rentalDate), "dd MMM yyyy")}
               </p>
 
-              {/* TIME (UPDATED TO 12H FORMAT) */}
+              {/* TIME */}
               <p className="font-medium flex items-center gap-2">
                 <Clock className="w-4 h-4" />
                 {formatRange(s.slots)}
@@ -88,31 +161,24 @@ export default function UpcomingSlots({ slots = [] }) {
               </p>
             </div>
 
-            {/* STATUS */}
-            <span
-              className={`text-xs px-3 py-1 h-fit rounded-full capitalize
-                ${
-                  s.bookingStatus === "confirmed"
-                    ? "bg-green-100 text-green-700"
-                    : s.bookingStatus === "pending"
-                    ? "bg-yellow-100 text-yellow-700"
-                    : "bg-gray-200 text-gray-700"
-                }`}
-            >
-              {s.bookingStatus}
-            </span>
+            {/* STATUS BADGE */}
+            <div className="flex flex-col items-end gap-2">
+              <span
+                className={`text-xs px-3 py-1 rounded-full capitalize ${labelStyles[s.bookingLabel]}`}
+              >
+                {s.bookingLabel}
+              </span>
+            </div>
           </div>
         ))}
 
-        {/* EMPTY STATE */}
-        {!slots.length && (
+        {!processedSlots.length && (
           <p className="text-sm text-muted-foreground text-center py-6">
             No upcoming slots
           </p>
         )}
       </div>
 
-      {/* VIEW MORE BUTTON */}
       {hasMore && (
         <div className="mt-5 text-center">
           <button

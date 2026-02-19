@@ -228,7 +228,7 @@ export default function Facilities() {
     <div className="text-sm">
       {/* HEADER */}
       <div className="flex justify-between mb-4">
-        <h1 className="text-xl font-semibold text-green-800">
+        <h1 className="text-md sm:text-xl font-semibold text-green-800">
           Facilities
         </h1>
         <button
@@ -240,7 +240,7 @@ export default function Facilities() {
       </div>
 
       {/* TABLE */}
-      <div className="bg-white border rounded-lg overflow-hidden">
+      <div className="hidden md:block bg-white border rounded-lg overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
@@ -291,6 +291,53 @@ export default function Facilities() {
           </tbody>
         </table>
       </div>
+      {/* ================= MOBILE CARD VIEW ================= */}
+      <div className="md:hidden space-y-4">
+        {paginatedFacilities.map((f) => (
+          <div
+            key={f._id}
+            className="bg-white border rounded-xl p-4 shadow-sm"
+          >
+            {/* Top Section */}
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="font-semibold text-base">{f.name}</h3>
+                <p className="text-sm text-muted-foreground">
+                  ₹{f.hourlyRate} per slot
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span
+                  className={`px-3 py-1 rounded-full text-[0.65rem] ${STATUS_STYLES[f.status]}`}
+                >
+                  {f.status}
+                </span>
+
+                <button
+                  onClick={(e) => openMenu(e, f)}
+                  className="p-1 hover:bg-gray-100 rounded"
+                >
+                  <MoreVertical className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Sports Section */}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {f.sports.map((sp) => (
+                <span
+                  key={sp._id}
+                  className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs"
+                >
+                  {sp.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
 
       {/* PAGINATION */}
       {totalPages > 1 && (
@@ -321,8 +368,12 @@ export default function Facilities() {
         }}
       >
         <SheetContent
-          side="right"
-          className="w-full sm:w-[420px] overflow-y-auto"
+          side={isMobile ? "bottom" : "right"}
+          className={
+            isMobile
+              ? "h-[85vh] rounded-t-2xl flex flex-col"
+              : "w-[420px] h-screen flex flex-col"
+          }
         >
           <SheetHeader>
             <SheetTitle className="capitalize">
@@ -367,7 +418,7 @@ export default function Facilities() {
                 disabled={isView}
                 placeholder="Enter slot rate "
                 type="number"
-                className="w-full h-10 border rounded-md px-3 disabled:bg-gray-50 text-[13px]"
+                className="w-full h-10 border rounded-md px-3 disabled:bg-gray-50 text-[16px]"
                 value={form.hourlyRate}
                 onChange={(e) =>
                   setForm({ ...form, hourlyRate: e.target.value })
@@ -417,7 +468,7 @@ export default function Facilities() {
         <div
           ref={menuRef}
           style={{ top: menu.y, left: menu.x }}
-          className="fixed z-[9999] w-32 bg-white border rounded shadow"
+          className="fixed z-[9999] w-32 bg-white border rounded-xl shadow"
         >
           <button
             onClick={() => openView(menu.facility)}

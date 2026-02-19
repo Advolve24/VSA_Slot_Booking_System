@@ -3,7 +3,6 @@ import api from "@/lib/axios";
 import { format } from "date-fns";
 import {
   Plus,
-  Pencil,
   MoreVertical,
   CalendarIcon,
 } from "lucide-react";
@@ -39,7 +38,6 @@ import { useToast } from "@/hooks/use-toast";
 
 /* ================= UTILS ================= */
 const toDateOnly = (d) => format(new Date(d), "yyyy-MM-dd");
-
 const formatTime12H = (time) => {
   const h = Number(time.split(":")[0]);
   return `${h % 12 || 12}:00 ${h < 12 ? "AM" : "PM"}`;
@@ -47,35 +45,32 @@ const formatTime12H = (time) => {
 
 const selectTriggerClass =
   "w-full h-10 text-sm bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-green-600";
-
-const selectItemClass = `
-  cursor-pointer
-  transition-colors
-  data-[highlighted]:bg-green-100
-  data-[highlighted]:text-green-900
-  data-[state=checked]:bg-green-600
-  data-[state=checked]:text-white
-`;
+const selectItemClass =
+  "cursor-pointer transition-colors data-[highlighted]:bg-green-100 data-[highlighted]:text-green-900 data-[state=checked]:bg-green-600 data-[state=checked]:text-white";
 
 export default function BlockedSlot() {
   const { toast } = useToast();
-
   /* ================= STATE ================= */
   const [facilities, setFacilities] = useState([]);
   const [tableData, setTableData] = useState([]);
-
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [availableSlots, setAvailableSlots] = useState([]);
-
   const [form, setForm] = useState({
     facilityId: "",
     date: toDateOnly(new Date()),
     slots: [],
     reason: "coaching",
   });
+  const [isMobile, setIsMobile] = useState(false);
+  /* ================= RESPONSIVE ================= */
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   /* ================= LOAD ================= */
   useEffect(() => {
@@ -102,7 +97,7 @@ export default function BlockedSlot() {
     setAvailableSlots(res.data || []);
   };
 
-  /* ================= GROUP SLOTS ================= */
+  /* ================= GROUP ================= */
   const groupedSlots = useMemo(() => {
     const morning = availableSlots.filter(
       (s) => Number(s.time.split(":")[0]) < 12
@@ -145,12 +140,6 @@ export default function BlockedSlot() {
     setDrawerOpen(false);
     setEditingId(null);
     setAvailableSlots([]);
-    setForm({
-      facilityId: "",
-      date: toDateOnly(new Date()),
-      slots: [],
-      reason: "coaching",
-    });
   };
 
   const toggleSlot = (time) => {
@@ -164,7 +153,6 @@ export default function BlockedSlot() {
 
   /* ================= SAVE ================= */
   const saveBlockedSlots = async () => {
-    // ❌ Only enforce slot selection in ADD mode
     if (!editingId && !form.slots.length) {
       toast({
         title: "Select slots",
@@ -175,7 +163,6 @@ export default function BlockedSlot() {
     }
 
     try {
-      // 🟢 Only call POST if there are new slots to block
       if (form.slots.length > 0) {
         await api.post("/turf-rentals/blocked-slots", {
           facilityId: form.facilityId,
@@ -202,85 +189,39 @@ export default function BlockedSlot() {
     }
   };
 
-
-  /* ================= UNBLOCK SINGLE SLOT ================= */
-  const unblockSlot = async (time) => {
-    try {
-      await api.delete(
-        `/turf-rentals/blocked-slots/${editingId}/${encodeURIComponent(time)}`
-      );
-
-      toast({
-        title: "Slot unblocked",
-        description: "Slot removed successfully",
-      });
-
-      await loadTable();
-      await loadSlots(form.facilityId, form.date);
-    } catch {
-      toast({
-        title: "Error",
-        description: "Failed to unblock slot",
-        variant: "destructive",
-      });
-    }
-  };
-
-  /* ================= DELETE FULL ROW ================= */
-  const deleteRow = async (id) => {
-    if (!window.confirm("Delete all blocked slots for this date?")) return;
-
-    try {
-      await api.delete(`/turf-rentals/blocked-slots/${id}`);
-
-      toast({
-        title: "Deleted",
-        description: "Blocked entry removed",
-      });
-
-      await loadTable();
-      closeDrawer();
-    } catch {
-      toast({
-        title: "Error",
-        description: "Failed to delete entry",
-        variant: "destructive",
-      });
-    }
-  };
-
   /* ================= UI ================= */
   return (
-    <div className="space-y-4">
-      {/* HEADER */}
+    <div className="space-y-6">
+      {/* ================= HEADER ================= */}
       <div className="flex justify-between items-center">
-        <h1 className="text-xl font-semibold text-green-800">Blocked Slots</h1>
+        <h1 className="text-md sm:text-xl font-semibold text-green-800">
+          Blocked Slots
+        </h1>
         <Button onClick={openAdd} className="bg-green-700">
           <Plus className="mr-2 h-4 w-4" />
           Block Slot
         </Button>
       </div>
 
-      {/* TABLE */}
-      <div className="bg-white border rounded-xl overflow-hidden">
-        <table className="w-full text-sm table-fixed">
+      {/* ================= DESKTOP TABLE ================= */}
+      <div className="hidden md:block bg-white border rounded-xl overflow-hidden">
+        <table className="w-full text-sm">
           <thead className="bg-gray-50">
-            <tr>
-              <th className="p-3 text-left w-[220px]">Facility</th>
-              <th className="text-left">Blocked Slots</th>
-              <th className="text-center w-[120px]">Date</th>
-              <th className="text-center w-[70px]">Action</th>
+            <tr className="text-left">
+              <th className="p-3 text-left">Facility</th>
+              <th>Blocked Slots</th>
+              <th>Date</th>
+              <th className="text-right pr-4">Action</th>
             </tr>
           </thead>
-
           <tbody>
             {tableData.map((row) => (
-              <tr key={row._id} className="border-t align-top">
+              <tr key={row._id} className="border-t">
                 <td className="p-3 font-medium">
                   {row.facilityId?.name}
                 </td>
 
-                <td className="p-2">
+                <td>
                   <div className="flex flex-wrap gap-1">
                     {row.slots.map((s) => (
                       <span
@@ -293,26 +234,18 @@ export default function BlockedSlot() {
                   </div>
                 </td>
 
-                <td className="text-center pt-3">
-                  {format(new Date(row.date), "dd MMM yyyy")}
-                </td>
+                <td>{format(new Date(row.date), "dd MMM yyyy")}</td>
 
-                <td className="text-center pt-2">
+                <td className="text-right pr-4">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button className="p-2 rounded hover:bg-gray-100">
+                      <button className="p-2 hover:bg-gray-100 rounded">
                         <MoreVertical size={16} />
                       </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent className="z-[9999] bg-white border shadow-lg align-end cursor-pointer" align="end">
+                    <DropdownMenuContent className="z-[9999] bg-white border shadow-lg">
                       <DropdownMenuItem onClick={() => openEdit(row)}>
                         Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-red-600"
-                        onClick={() => deleteRow(row._id)}
-                      >
-                        Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -323,19 +256,70 @@ export default function BlockedSlot() {
         </table>
       </div>
 
-      {/* DRAWER */}
+      {/* ================= MOBILE CARD VIEW ================= */}
+      <div className="md:hidden space-y-4">
+        {tableData.map((row) => (
+          <div
+            key={row._id}
+            className="bg-white border rounded-xl p-3 shadow-sm"
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="font-semibold text-base">
+                  {row.facilityId?.name}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {format(new Date(row.date), "dd MMM yyyy")}
+                </p>
+              </div>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="p-2 hover:bg-gray-100 rounded">
+                    <MoreVertical size={16} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="z-[9999] bg-white border shadow-lg">
+                  <DropdownMenuItem onClick={() => openEdit(row)}>
+                    Edit
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {row.slots.map((s) => (
+                <span
+                  key={s.startTime}
+                  className="text-xs px-3 py-1 rounded-full border bg-red-50 text-red-700 border-red-300"
+                >
+                  {formatTime12H(s.startTime)}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ================= DRAWER ================= */}
       <Sheet open={drawerOpen} onOpenChange={closeDrawer}>
-        <SheetContent side="right" className="w-[460px]">
-          <SheetHeader>
+        <SheetContent
+          side={isMobile ? "bottom" : "right"}
+          className={
+            isMobile
+              ? "h-[70vh] rounded-t-2xl flex flex-col px-3 pt-4 pb-3"
+              : "w-[460px] h-screen flex flex-col"
+          }
+        >
+          <SheetHeader className="shrink-0">
             <SheetTitle>
               {editingId ? "Edit Blocked Slots" : "Block Slots"}
             </SheetTitle>
           </SheetHeader>
 
-          <div className="space-y-4 mt-6">
+          <div className="flex-1 overflow-y-auto mt-4 space-y-4 pr-1">
             {/* FACILITY */}
             <Select
-              disabled={!!editingId}
               value={form.facilityId}
               onValueChange={(v) => {
                 setForm((f) => ({ ...f, facilityId: v, slots: [] }));
@@ -360,74 +344,51 @@ export default function BlockedSlot() {
 
             {/* DATE */}
             <Popover>
-              <PopoverTrigger asChild disabled={!!editingId}>
+              <PopoverTrigger asChild>
                 <Button
                   variant="outline"
-                  className="w-full justify-start h-10 bg-white border border-gray-300"
-                  disabled={!!editingId}
+                  className="w-full justify-start h-10 bg-white border"
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {format(selectedDate, "dd MMM yyyy")}
                 </Button>
               </PopoverTrigger>
 
-              <PopoverContent
-                align="start"
-                side="bottom"
-                sideOffset={8}
-                className="z-[10000] p-0 bg-white border shadow-lg"
-              >
+              <PopoverContent className="z-[10000] p-0 bg-white border shadow-lg">
                 <Calendar
                   mode="single"
                   selected={selectedDate}
                   onSelect={(d) => {
                     if (!d) return;
                     setSelectedDate(d);
-
                     const apiDate = toDateOnly(d);
-                    setForm((f) => ({ ...f, date: apiDate, slots: [] }));
-
+                    setForm((f) => ({ ...f, date: apiDate }));
                     loadSlots(form.facilityId, apiDate);
                   }}
                   initialFocus
-                  classNames={{
-                    day: "h-9 w-9 rounded-md hover:bg-green-100",
-                    day_selected:
-                      "bg-green-600 text-white hover:bg-green-600",
-                    day_today:
-                      "border border-green-600 text-green-700 font-semibold",
-                  }}
                 />
               </PopoverContent>
             </Popover>
 
-            {/* SLOTS */}
+            {/* SLOT CHIPS */}
             {[groupedSlots.morning, groupedSlots.evening].map(
               (group, idx) => (
                 <div key={idx} className="flex flex-wrap gap-2">
                   {group.map((slot) => {
                     const selected = form.slots.includes(slot.time);
 
-                    const cls =
-                      slot.status === "available"
-                        ? selected
-                          ? "bg-red-100 border-red-500 text-red-700"
-                          : "bg-green-50 border-green-400 text-green-700 hover:bg-green-100 cursor-pointer"
-                        : slot.status === "booked"
-                          ? "bg-orange-100 border-orange-400 text-orange-700 cursor-not-allowed"
-                          : "bg-red-100 border-red-400 text-red-700 cursor-pointer";
-
                     return (
                       <div
                         key={slot.time}
                         onClick={() =>
-                          slot.status === "available"
-                            ? toggleSlot(slot.time)
-                            : editingId &&
-                            slot.status === "blocked" &&
-                            unblockSlot(slot.time)
+                          slot.status === "available" &&
+                          toggleSlot(slot.time)
                         }
-                        className={`px-4 py-2 rounded-full border text-sm transition ${cls}`}
+                        className={`px-4 py-2 rounded-full border text-sm cursor-pointer transition ${
+                          selected
+                            ? "bg-red-100 border-red-500 text-red-700"
+                            : "bg-green-50 border-green-400 text-green-700"
+                        }`}
                       >
                         {formatTime12H(slot.time)}
                       </div>
@@ -436,18 +397,16 @@ export default function BlockedSlot() {
                 </div>
               )
             )}
+          </div>
 
-            <Button onClick={saveBlockedSlots} className="w-full bg-green-700">
+          {/* FIXED FOOTER */}
+          <div className="shrink-0 pt-3 border-t bg-white">
+            <Button
+              onClick={saveBlockedSlots}
+              className="w-full bg-green-700"
+            >
               Save
             </Button>
-
-            {editingId && (
-              <p className="text-xs text-gray-500">
-                Tip: Click a{" "}
-                <span className="text-red-600 font-medium">blocked</span> slot
-                to unblock it.
-              </p>
-            )}
           </div>
         </SheetContent>
       </Sheet>

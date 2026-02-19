@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/axios";
-import { RotateCcw, Users, MoreHorizontal, CalendarIcon } from "lucide-react";
+import { RotateCcw, Users, MoreHorizontal, CalendarIcon, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -36,22 +36,22 @@ const LEVELS = ["Beginner", "Intermediate", "Advanced"];
 
 export default function CoachingBatches() {
   const ITEMS_PER_PAGE = 5;
-
+  const { toast } = useToast();
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [batches, setBatches] = useState([]);
   const [sports, setSports] = useState([]);
   const [facilities, setFacilities] = useState([]);
-
   const [drawer, setDrawer] = useState(null);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState({});
   const [filters, setFilters] = useState({ sport: "", level: "", coach: "", status: "" });
   const [facilitySlots, setFacilitySlots] = useState([]);
   const [slotAction, setSlotAction] = useState(null); // "activate" | "deactivate"
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const [tempFilters, setTempFilters] = useState(filters);
 
-
-  const { toast } = useToast();
-  const navigate = useNavigate();
 
   // Reset page on filters/data change
   useEffect(() => setPage(1), [batches, filters]);
@@ -71,15 +71,18 @@ export default function CoachingBatches() {
       setCalendarKey((k) => k + 1);
     }, [drawerKey]);
 
-    // ✅ normalize today to 00:00
+    useEffect(() => {
+      const check = () => setIsMobile(window.innerWidth < 768);
+      check();
+      window.addEventListener("resize", check);
+      return () => window.removeEventListener("resize", check);
+    }, []);
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
-    // ✅ normalize minDate to 00:00
     const normalizedMinDate = minDate
       ? new Date(new Date(minDate).setHours(0, 0, 0, 0))
       : null;
-
     return (
       <Popover>
         <PopoverTrigger asChild>
@@ -88,8 +91,8 @@ export default function CoachingBatches() {
             disabled={disabled}
             className="w-full justify-start text-left font-normal h-10"
           >
-            <CalendarIcon className="mr-2 h-4 w-4" />
-            {value ? format(new Date(value), "PPP") : placeholder}
+            <CalendarIcon className=" h-4 w-4" />
+            {value ? format(new Date(value), "dd MMM yyyy") : placeholder}
           </Button>
         </PopoverTrigger>
 
@@ -168,11 +171,9 @@ export default function CoachingBatches() {
     }
   };
 
-
   useEffect(() => {
     fetchAll();
   }, []);
-
 
   // Filtered batches
   const filteredBatches = useMemo(() => {
@@ -255,7 +256,6 @@ export default function CoachingBatches() {
             });
           }
         }
-
         await api.put(`/batches/${selected._id}`, payload);
       } else {
         if (!payload.slotId) {
@@ -264,14 +264,11 @@ export default function CoachingBatches() {
             title: "Slot required",
           });
         }
-
         await api.post("/batches", payload);
       }
-
       toast({
         title: drawer === "add" ? "Batch added" : "Batch updated",
       });
-
       setDrawer(null);
       fetchAll();
     } catch (err) {
@@ -282,7 +279,6 @@ export default function CoachingBatches() {
       });
     }
   };
-
 
   const deleteBatch = async (id) => {
     if (!confirm("Delete this batch?")) return;
@@ -310,31 +306,37 @@ export default function CoachingBatches() {
   const selectItemClass =
     "cursor-pointer transition-colors data-[highlighted]:bg-green-100 data-[highlighted]:text-green-900 data-[state=checked]:bg-green-600 data-[state=checked]:text-white";
 
+  const handleRefresh = async () => {
+    setFilters({ sport: "", level: "", coach: "", status: "" });
+    setPage(1);
+    await fetchAll();
+  };
   return (
     <div className="space-y-6">
       {/* HEADER */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mt-4">
+
+        {/* LEFT SIDE */}
         <div>
-          <h1 className="text-2xl font-bold text-green-800">Coaching Batches</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-xl md:text-2xl font-bold text-green-800">
+            Coaching Batches
+          </h1>
+          <p className="text-xs md:text-sm text-muted-foreground">
             Manage coaching batches, schedules, and coach assignments.
           </p>
         </div>
-        <div className="flex flex-col md:flex-row gap-2">
+
+        {/* RIGHT SIDE */}
+        <div className="flex flex-row gap-2 w-[50%] md:w-auto">
           <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate(0)}
-            className="flex items-center gap-2"
+            className="bg-orange-500 flex-1 md:flex-none"
+            onClick={openAdd}
           >
-            <RotateCcw className="w-4 h-4" /> Refresh
-          </Button>
-          <Button className="bg-orange-500" onClick={openAdd}>
-            + Add New Batch
+            <span className="md:hidden">+ Add</span>
+            <span className="hidden md:inline">+ Add New Batch</span>
           </Button>
         </div>
       </div>
-
       {/* SPORT CARDS */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {Object.entries(sportStats).map(([sport, s], idx) => (
@@ -350,36 +352,114 @@ export default function CoachingBatches() {
 
       {/* FILTERS */}
       <div className="bg-white border rounded-xl p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-          <Select value={filters.sport || "all"} onValueChange={(v) => setFilters((p) => ({ ...p, sport: v === "all" ? "" : v }))}>
-            <SelectTrigger className={selectTriggerClass}><SelectValue placeholder="All Sports" /></SelectTrigger>
+        {/* ================= DESKTOP FILTERS ================= */}
+        <div className="hidden md:grid grid-cols-4 gap-3 mb-3">
+          {/* SPORT */}
+          <Select
+            value={filters.sport || "all"}
+            onValueChange={(v) =>
+              setFilters((p) => ({
+                ...p,
+                sport: v === "all" ? "" : v,
+              }))
+            }
+          >
+            <SelectTrigger className={selectTriggerClass}>
+              <SelectValue placeholder="All Sports" />
+            </SelectTrigger>
             <SelectContent className="z-[9999] bg-white border shadow-lg">
-              <SelectItem value="all" className={selectItemClass}>All Sports</SelectItem>
-              {sports.map((s) => <SelectItem key={s._id} value={s.name} className={selectItemClass}>{s.name}</SelectItem>)}
+              <SelectItem value="all" className={selectItemClass}>
+                All Sports
+              </SelectItem>
+              {sports.map((s) => (
+                <SelectItem
+                  key={s._id}
+                  value={s.name}
+                  className={selectItemClass}
+                >
+                  {s.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
-          <Select value={filters.level || "all"} onValueChange={(v) => setFilters((p) => ({ ...p, level: v === "all" ? "" : v }))}>
-            <SelectTrigger className={selectTriggerClass}><SelectValue placeholder="All Levels" /></SelectTrigger>
+          {/* LEVEL */}
+          <Select
+            value={filters.level || "all"}
+            onValueChange={(v) =>
+              setFilters((p) => ({
+                ...p,
+                level: v === "all" ? "" : v,
+              }))
+            }
+          >
+            <SelectTrigger className={selectTriggerClass}>
+              <SelectValue placeholder="All Levels" />
+            </SelectTrigger>
             <SelectContent className="z-[9999] bg-white border shadow-lg">
-              <SelectItem value="all" className={selectItemClass}>All Levels</SelectItem>
-              {LEVELS.map((l) => <SelectItem key={l} value={l} className={selectItemClass}>{l}</SelectItem>)}
+              <SelectItem value="all" className={selectItemClass}>
+                All Levels
+              </SelectItem>
+              {LEVELS.map((l) => (
+                <SelectItem key={l} value={l} className={selectItemClass}>
+                  {l}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
-          <Select value={filters.status || "all"} onValueChange={(v) => setFilters((p) => ({ ...p, status: v === "all" ? "" : v }))}>
-            <SelectTrigger className={selectTriggerClass}><SelectValue placeholder="All Status" /></SelectTrigger>
+          {/* STATUS */}
+          <Select
+            value={filters.status || "all"}
+            onValueChange={(v) =>
+              setFilters((p) => ({
+                ...p,
+                status: v === "all" ? "" : v,
+              }))
+            }
+          >
+            <SelectTrigger className={selectTriggerClass}>
+              <SelectValue placeholder="All Status" />
+            </SelectTrigger>
             <SelectContent className="z-[9999] bg-white border shadow-lg">
-              <SelectItem value="all" className={selectItemClass}>All Status</SelectItem>
-              <SelectItem value="active" className={selectItemClass}>Active</SelectItem>
-              <SelectItem value="upcoming" className={selectItemClass}>Upcoming</SelectItem>
-              <SelectItem value="expired" className={selectItemClass}>Expired</SelectItem>
+              <SelectItem value="all" className={selectItemClass}>
+                All Status
+              </SelectItem>
+              <SelectItem value="active" className={selectItemClass}>
+                Active
+              </SelectItem>
+              <SelectItem value="upcoming" className={selectItemClass}>
+                Upcoming
+              </SelectItem>
+              <SelectItem value="expired" className={selectItemClass}>
+                Expired
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
+        {/* ================= MOBILE ICON ROW ================= */}
+        <div className="md:hidden flex justify-between gap-3 mb-3">
+          {/* FILTER ICON */}
+          <button
+            onClick={() => {
+              setTempFilters(filters);
+              setMobileFilterOpen(true);
+            }}
+            className="h-8 w-8 flex items-center justify-center rounded-xl border bg-gray-50 hover:bg-gray-100 transition"
+          >
+            <SlidersHorizontal className="w-5 h-5 text-gray-700" />
+          </button>
+          <button
+            onClick={handleRefresh}
+            className="h-8 w-8 flex items-center justify-center rounded-xl border bg-gray-50 hover:bg-gray-100 transition"
+          >
+            <RotateCcw className="w-5 h-5 text-gray-700" />
+          </button>
+        </div>
+
 
         {/* TABLE */}
-        <div className="bg-white rounded-xl border overflow-x-auto">
+        <div className="hidden md:block bg-white rounded-xl border overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr className="text-left">
@@ -411,12 +491,8 @@ export default function CoachingBatches() {
                         No slot assigned
                       </div>
                     )}</td>
-                    {b.hasQuarterly && (
-                      <div className="text-xs text-blue-600 font-medium">
-                        Quarterly Enabled
-                      </div>
-                    )}
-                    <td>{b.startDate ? new Date(b.startDate).toLocaleDateString() : "-"}</td>
+
+                    <td> {b.startDate ? format(new Date(b.startDate), "dd-MM-yyyy") : "-"}</td>
                     <td><span className={`px-3 py-1 rounded-full text-[0.65rem] ${status.color}`}>{status.label}</span></td>
                     <td className="text-right pr-3">
                       <DropdownMenu>
@@ -436,6 +512,71 @@ export default function CoachingBatches() {
             </tbody>
           </table>
         </div>
+        {/* ================= MOBILE CARD VIEW ================= */}
+        <div className="md:hidden space-y-4 mt-4">
+          {paginatedBatches.map((b) => {
+            const status = getStatusBadge(b);
+
+            return (
+              <div
+                key={b._id}
+                className="bg-white border rounded-xl p-4 shadow-sm"
+              >
+                {/* TOP */}
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="font-semibold text-base">{b.name}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {b.sportName} • {b.level}
+                    </p>
+                  </div>
+
+                  <span
+                    className={`px-3 py-1 rounded-full text-[0.65rem] ${status.color}`}
+                  >
+                    {status.label}
+                  </span>
+                </div>
+
+                {/* MIDDLE */}
+                <div className="mt-3 text-sm text-muted-foreground">
+                  <div>Coach: {b.coachName}</div>
+                  <div>
+                    Start:{" "}
+                    {b.startDate
+                      ? new Date(b.startDate).toLocaleDateString()
+                      : "-"}
+                  </div>
+                </div>
+
+                {/* ACTION */}
+                <div className="mt-3 flex justify-end">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="outline">
+                        <MoreHorizontal />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="z-[9999] bg-white border shadow-lg">
+                      <DropdownMenuItem onClick={() => openView(b)}>
+                        View
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openEdit(b)}>
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-red-600"
+                        onClick={() => deleteBatch(b._id)}
+                      >
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
         {/* PAGINATION */}
         <div className="flex items-center justify-between mt-4">
@@ -454,8 +595,15 @@ export default function CoachingBatches() {
 
       {/* BATCH DRAWER */}
       <Sheet open={!!drawer} onOpenChange={() => setDrawer(null)}>
-        <SheetContent side="right" className="w-[30vw] h-screen overflow-y-auto">
-          <SheetHeader>
+        <SheetContent
+          side={isMobile ? "bottom" : "right"}
+          className={
+            isMobile
+              ? "h-[85vh] rounded-t-2xl flex flex-col"
+              : "w-[30vw] h-screen flex flex-col"
+          }
+        >
+          <SheetHeader className="px-4 pt-4 shrink-0">
             <SheetTitle>
               {drawer === "add"
                 ? "Add Coaching Batch"
@@ -465,308 +613,373 @@ export default function CoachingBatches() {
             </SheetTitle>
           </SheetHeader>
 
-          <div className="space-y-5 mt-4 pb-10">
+          <div className="flex-1 overflow-y-auto px-2 py-4">
+            <div className="space-y-5 mt-4 pb-10">
 
-            {/* Batch Name + Level */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>Batch Name</Label>
-                <Input
-                  placeholder="e.g. Cricket Beginners Morning"
-                  disabled={drawer === "view"}
-                  value={form.name || ""}
-                  onChange={(e) =>
-                    setForm({ ...form, name: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label>Level</Label>
-                <Select
-                  disabled={drawer === "view"}
-                  value={form.level || ""}
-                  onValueChange={(v) =>
-                    setForm({ ...form, level: v })
-                  }
-                >
-                  <SelectTrigger className={selectTriggerClass}>
-                    <SelectValue placeholder="Select level" />
-                  </SelectTrigger>
-                  <SelectContent className="z-[9999] bg-white border shadow-lg">
-                    {LEVELS.map((l) => (
-                      <SelectItem key={l} value={l} className={selectItemClass}>
-                        {l}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Sport + Facility */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>Sport</Label>
-                <Select
-                  disabled={drawer === "view"}
-                  value={form.sportName || ""}
-                  onValueChange={(v) => {
-                    setForm({
-                      ...form,
-                      sportName: v,
-                      facilityId: "",
-                      slotId: "",
-                      time: "",
-                    });
-                    setFacilitySlots([]);
-                  }}
-                >
-                  <SelectTrigger className={selectTriggerClass}>
-                    <SelectValue placeholder="Select sport" />
-                  </SelectTrigger>
-                  <SelectContent className="z-[9999] bg-white border shadow-lg">
-                    {sports.map((s) => (
-                      <SelectItem className={selectItemClass} key={s._id} value={s.name}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <Label>Facility</Label>
-                <Select
-                  disabled={drawer === "view" || !form.sportName}
-                  value={form.facilityId || ""}
-                  onValueChange={(id) => {
-                    setForm({
-                      ...form,
-                      facilityId: id,
-                      slotId: "",
-                      time: "",
-                    });
-                    setFacilitySlots([]);
-                    fetchFacilitySlots(id);
-                  }}
-                >
-                  <SelectTrigger className={selectTriggerClass}>
-                    <SelectValue
-                      placeholder={
-                        form.sportName
-                          ? "Select facility"
-                          : "Select sport first"
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent className="z-[9999] bg-white border shadow-lg">
-                    {facilities
-                      .filter((f) =>
-                        f.sports?.some((s) => s.name === form.sportName)
-                      )
-                      .map((f) => (
-                        <SelectItem className={selectItemClass} key={f._id} value={f._id}>
-                          {f.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Slot (single row – full width) */}
-            {form.facilityId && drawer !== "view" && (
-              <div className="space-y-1">
-                <Label>Slot</Label>
-                <Select
-                  value={form.slotId || ""}
-                  onValueChange={(v) => {
-                    setForm({ ...form, slotId: v });
-                    setSlotAction("activate");
-                  }}
-                >
-                  <SelectTrigger className={selectTriggerClass}>
-                    <SelectValue placeholder="Select available slot" />
-                  </SelectTrigger>
-                  <SelectContent className="z-[9999] bg-white border shadow-lg">
-                    {facilitySlots
-                      .filter((s) => s.isActive || s._id === form.slotId)
-                      .map((s) => (
-                        <SelectItem
-                          key={s._id}
-                          value={s._id}
-                          className={selectItemClass}
-                        >
-                          {s.label}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Coach + Schedule */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>Coach Name</Label>
-                <Input
-                  placeholder="e.g. Rahul Sharma"
-                  disabled={drawer === "view"}
-                  value={form.coachName || ""}
-                  onChange={(e) =>
-                    setForm({ ...form, coachName: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label>Schedule</Label>
-                <Input
-                  placeholder="Mon – Sat"
-                  disabled={drawer === "view"}
-                  value={form.schedule || ""}
-                  onChange={(e) =>
-                    setForm({ ...form, schedule: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-
-            {/* Dates */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>Start Date</Label>
-                <DatePicker
-                  disabled={drawer === "view"}
-                  placeholder="Start date"
-                  value={form.startDate}
-                  minDate={new Date()} // ✅ today & future only
-                  onChange={(date) =>
-                    setForm({ ...form, startDate: date, endDate: "" })
-                  }
-                  drawerKey={drawer}
-                />
-
-              </div>
-
-              <div className="space-y-1">
-                <Label>End Date</Label>
-                <DatePicker
-                  disabled={drawer === "view" || !form.startDate}
-                  placeholder={
-                    form.startDate ? "End date" : "Select start date first"
-                  }
-                  value={form.endDate}
-                  minDate={
-                    form.startDate
-                      ? new Date(
-                        new Date(form.startDate).setDate(
-                          new Date(form.startDate).getDate() + 1
-                        )
-                      )
-                      : new Date()
-                  }
-                  onChange={(date) =>
-                    setForm({ ...form, endDate: date })
-                  }
-                  drawerKey={drawer}
-                />
-
-              </div>
-            </div>
-
-            {/* Capacity + Fee */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>Capacity</Label>
-                <Input
-                  placeholder="e.g. 20"
-                  disabled={drawer === "view"}
-                  type="number"
-                  value={form.capacity || ""}
-                  onChange={(e) =>
-                    setForm({ ...form, capacity: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label>Monthly Fee (₹)</Label>
-                <Input
-                  placeholder="e.g. 2500"
-                  disabled={drawer === "view"}
-                  type="number"
-                  value={form.monthlyFee || ""}
-                  onChange={(e) =>
-                    setForm({ ...form, monthlyFee: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-            {/* Quarterly Plan Settings */}
-            <div className="space-y-3 border-t pt-4">
-
-              <div className="flex items-center justify-between">
-                <Label>Enable Quarterly Plan</Label>
-
-                <input
-                  type="checkbox"
-                  disabled={drawer === "view"}
-                  checked={form.hasQuarterly || false}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      hasQuarterly: e.target.checked,
-                      quarterlyMultiplier: e.target.checked
-                        ? form.quarterlyMultiplier || 3
-                        : 3,
-                    })
-                  }
-                  className="w-4 h-4 accent-green-600"
-                />
-              </div>
-
-              {form.hasQuarterly && (
+              {/* Batch Name + Level */}
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <Label>Quarterly Multiplier</Label>
+                  <Label>Batch Name</Label>
                   <Input
-                    type="number"
-                    min="1"
-                    step="0.1"
+                    placeholder="e.g. Cricket Beginners Morning"
                     disabled={drawer === "view"}
-                    value={form.quarterlyMultiplier || 3}
+                    value={form.name || ""}
+                    className="text-sm"
+                    onChange={(e) =>
+                      setForm({ ...form, name: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label>Level</Label>
+                  <Select
+                    disabled={drawer === "view"}
+                    value={form.level || ""}
+                    onValueChange={(v) =>
+                      setForm({ ...form, level: v })
+                    }
+                  >
+                    <SelectTrigger className={selectTriggerClass}>
+                      <SelectValue placeholder="Select level" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[9999] bg-white border shadow-lg">
+                      {LEVELS.map((l) => (
+                        <SelectItem key={l} value={l} className={selectItemClass}>
+                          {l}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Sport + Facility */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label>Sport</Label>
+                  <Select
+                    disabled={drawer === "view"}
+                    value={form.sportName || ""}
+                    onValueChange={(v) => {
+                      setForm({
+                        ...form,
+                        sportName: v,
+                        facilityId: "",
+                        slotId: "",
+                        time: "",
+                      });
+                      setFacilitySlots([]);
+                    }}
+                  >
+                    <SelectTrigger className={selectTriggerClass}>
+                      <SelectValue placeholder="Select sport" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[9999] bg-white border shadow-lg">
+                      {sports.map((s) => (
+                        <SelectItem className={selectItemClass} key={s._id} value={s.name}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label>Facility</Label>
+                  <Select
+                    disabled={drawer === "view" || !form.sportName}
+                    value={form.facilityId || ""}
+                    onValueChange={(id) => {
+                      setForm({
+                        ...form,
+                        facilityId: id,
+                        slotId: "",
+                        time: "",
+                      });
+                      setFacilitySlots([]);
+                      fetchFacilitySlots(id);
+                    }}
+                  >
+                    <SelectTrigger className={selectTriggerClass}>
+                      <SelectValue
+                        placeholder={
+                          form.sportName
+                            ? "Select facility"
+                            : "Select sport first"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent className="z-[9999] bg-white border shadow-lg">
+                      {facilities
+                        .filter((f) =>
+                          f.sports?.some((s) => s.name === form.sportName)
+                        )
+                        .map((f) => (
+                          <SelectItem className={selectItemClass} key={f._id} value={f._id}>
+                            {f.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Slot (single row – full width) */}
+              {form.facilityId && drawer !== "view" && (
+                <div className="space-y-1">
+                  <Label>Slot</Label>
+                  <Select
+                    value={form.slotId || ""}
+                    onValueChange={(v) => {
+                      setForm({ ...form, slotId: v });
+                      setSlotAction("activate");
+                    }}
+                  >
+                    <SelectTrigger className={selectTriggerClass}>
+                      <SelectValue placeholder="Select available slot" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[9999] bg-white border shadow-lg">
+                      {facilitySlots
+                        .filter((s) => s.isActive || s._id === form.slotId)
+                        .map((s) => (
+                          <SelectItem
+                            key={s._id}
+                            value={s._id}
+                            className={selectItemClass}
+                          >
+                            {s.label}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Coach + Schedule */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label>Coach Name</Label>
+                  <Input
+                    placeholder="e.g. Rahul Sharma"
+                    disabled={drawer === "view"}
+                    value={form.coachName || ""}
+                    className="text-sm"
+                    onChange={(e) =>
+                      setForm({ ...form, coachName: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label>Schedule</Label>
+                  <Input
+                    placeholder="Mon – Sat"
+                    disabled={drawer === "view"}
+                    value={form.schedule || ""}
+                    className="text-sm"
+                    onChange={(e) =>
+                      setForm({ ...form, schedule: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              {/* Dates */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label>Start Date</Label>
+                  <DatePicker
+                    disabled={drawer === "view"}
+                    placeholder="Start date"
+                    value={form.startDate}
+                    minDate={new Date()} // ✅ today & future only
+                    onChange={(date) =>
+                      setForm({ ...form, startDate: date, endDate: "" })
+                    }
+                    drawerKey={drawer}
+                  />
+
+                </div>
+
+                <div className="space-y-1">
+                  <Label>End Date</Label>
+                  <DatePicker
+                    disabled={drawer === "view" || !form.startDate}
+                    placeholder={
+                      form.startDate ? "End date" : "Select start date first"
+                    }
+                    value={form.endDate}
+                    minDate={
+                      form.startDate
+                        ? new Date(
+                          new Date(form.startDate).setDate(
+                            new Date(form.startDate).getDate() + 1
+                          )
+                        )
+                        : new Date()
+                    }
+                    onChange={(date) =>
+                      setForm({ ...form, endDate: date })
+                    }
+                    drawerKey={drawer}
+                  />
+
+                </div>
+              </div>
+
+              {/* Capacity + Fee */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label>Capacity</Label>
+                  <Input
+                    placeholder="e.g. 20"
+                    disabled={drawer === "view"}
+                    type="number"
+                    value={form.capacity || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, capacity: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label>Monthly Fee (₹)</Label>
+                  <Input
+                    placeholder="e.g. 2500"
+                    disabled={drawer === "view"}
+                    type="number"
+                    value={form.monthlyFee || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, monthlyFee: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              {/* Quarterly Plan Settings */}
+              <div className="space-y-3 border-t pt-4">
+                <div className="flex items-center justify-between">
+                  <Label>Enable Quarterly Plan</Label>
+                  <input
+                    type="checkbox"
+                    disabled={drawer === "view"}
+                    checked={form.hasQuarterly || false}
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        quarterlyMultiplier: Number(e.target.value),
+                        hasQuarterly: e.target.checked,
+                        quarterlyMultiplier: e.target.checked
+                          ? form.quarterlyMultiplier || 3
+                          : 3,
                       })
                     }
+                    className="w-4 h-4 accent-green-600"
                   />
-                  <p className="text-xs text-gray-500">
-                    Quarterly price = Monthly × Multiplier
-                  </p>
+                </div>
+                {form.hasQuarterly && (
+                  <div className="space-y-1">
+                    <Label>Quarterly Multiplier</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      step="0.1"
+                      disabled={drawer === "view"}
+                      value={form.quarterlyMultiplier || 3}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          quarterlyMultiplier: Number(e.target.value),
+                        })
+                      }
+                    />
+                    <p className="text-xs text-gray-500">
+                      Quarterly price = Monthly × Multiplier
+                    </p>
+                  </div>
+                )}
+              </div>
+              {/* ================= FOOTER (FIXED) ================= */}
+              {drawer !== "view" && (
+                <div className="shrink-0 border-t bg-white px-4 py-4">
+                  <div className="flex gap-3">
+                    <Button
+                      className="bg-green-700 w-full md:w-[50%]"
+                      onClick={saveBatch}
+                    >
+                      {drawer === "add" ? "Add Batch" : "Save Changes"}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      className="w-full md:w-[50%]"
+                      onClick={() => setDrawer(null)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
-
-
-            {/* Actions */}
-            {drawer !== "view" && (
-              <div className="flex gap-3 pt-4">
-                <Button className="bg-green-700 w-[50%]" onClick={saveBatch}>
-                  {drawer === "add" ? "Add Batch" : "Save Changes"}
-                </Button>
-                <Button className="w-[50%]" variant="outline" onClick={() => setDrawer(null)}>
-                  Cancel
-                </Button>
-              </div>
-            )}
           </div>
         </SheetContent>
       </Sheet>
 
-
+      <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
+        <SheetContent
+          side="bottom"
+          className="h-[50vh] rounded-t-2xl p-4"
+        >
+          <h2 className="text-lg font-semibold mb-4">Filters</h2>
+          <div className="space-y-4">
+            <Select
+              value={tempFilters.sport || "all"}
+              onValueChange={(v) =>
+                setTempFilters((p) => ({
+                  ...p,
+                  sport: v === "all" ? "" : v,
+                }))
+              }
+            >
+              <SelectTrigger className={selectTriggerClass}>
+                <SelectValue placeholder="All Sports" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sports</SelectItem>
+                {sports.map((s) => (
+                  <SelectItem key={s._id} value={s.name}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex gap-3 mt-6">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() =>
+                setTempFilters({
+                  sport: "",
+                  level: "",
+                  coach: "",
+                  status: "",
+                })
+              }
+            >
+              Clear
+            </Button>
+            <Button
+              className="flex-1 bg-green-700"
+              onClick={() => {
+                setFilters(tempFilters);
+                setMobileFilterOpen(false);
+              }}
+            >
+              Apply
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
