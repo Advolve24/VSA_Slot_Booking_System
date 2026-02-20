@@ -41,7 +41,7 @@ export default function TurfSuccess() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-6">
+    <div className=" bg-gray-50 flex items-center justify-center px-6">
 
       <div className="text-center space-y-8 max-w-xl w-full">
 
@@ -54,7 +54,7 @@ export default function TurfSuccess() {
 
         {/* Heading */}
         <div className="space-y-2">
-          <h1 className="text-4xl font-bold text-gray-900">
+          <h1 className="text-xl sm:text-4xl font-bold text-gray-900">
             Booking Confirmed! 🎉
           </h1>
 
