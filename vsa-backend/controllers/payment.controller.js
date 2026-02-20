@@ -95,6 +95,7 @@ exports.verifyPayment = async (req, res) => {
       paymentId,
     } = req.body;
 
+    /* ================= SIGNATURE VERIFY ================= */
     const body = razorpay_order_id + "|" + razorpay_payment_id;
 
     const expectedSignature = crypto
@@ -108,13 +109,15 @@ exports.verifyPayment = async (req, res) => {
 
     const payment = await Payment.findById(paymentId);
 
-    if (!payment)
+    if (!payment) {
       return res.status(404).json({ message: "Payment not found" });
+    }
 
     if (payment.status === "paid") {
       return res.json({ success: true });
     }
 
+    /* ================= UPDATE PAYMENT ================= */
     payment.status = "paid";
     payment.razorpayPaymentId = razorpay_payment_id;
     payment.razorpaySignature = razorpay_signature;
@@ -139,7 +142,6 @@ exports.verifyPayment = async (req, res) => {
           $inc: { enrolledCount: 1 },
         });
 
-        /* ================= SLOT RESOLUTION ================= */
         let slotTime = "Not Assigned";
 
         if (enrollment.batchId?.slotId) {
@@ -161,9 +163,9 @@ exports.verifyPayment = async (req, res) => {
           }
         }
 
-        /* ================= SEND MAIL ================= */
+        /* 🔥 FIRE & FORGET EMAIL (NO AWAIT) */
         if (enrollment.email) {
-          await sendEnrollmentMail({
+          sendEnrollmentMail({
             to: enrollment.email,
             playerName: enrollment.playerName,
             sportName: enrollment.sportName,
@@ -180,7 +182,9 @@ exports.verifyPayment = async (req, res) => {
             totalDiscountAmount: enrollment.totalDiscountAmount,
             finalAmount: enrollment.finalAmount,
             enrollmentId: enrollment._id,
-          });
+          }).catch((err) =>
+            console.error("Enrollment Mail Error:", err)
+          );
         }
       }
     }
@@ -199,8 +203,9 @@ exports.verifyPayment = async (req, res) => {
         rental.bookingStatus = "confirmed";
         await rental.save();
 
+        /* 🔥 FIRE & FORGET EMAIL (NO AWAIT) */
         if (rental.email) {
-          await sendTurfBookingMail({
+          sendTurfBookingMail({
             to: rental.email,
             userName: rental.userName,
             facilityName: rental.facilityName,
@@ -211,15 +216,20 @@ exports.verifyPayment = async (req, res) => {
             totalDiscountAmount: rental.totalDiscountAmount,
             finalAmount: rental.finalAmount || rental.totalAmount,
             bookingId: rental._id,
-          });
+          }).catch((err) =>
+            console.error("Turf Mail Error:", err)
+          );
         }
       }
     }
 
-    res.json({ success: true });
+    /* ================= RETURN IMMEDIATELY ================= */
+    return res.json({ success: true });
 
   } catch (err) {
     console.error("Verify Payment Error:", err);
-    res.status(500).json({ message: "Payment verification failed" });
+    return res.status(500).json({
+      message: "Payment verification failed",
+    });
   }
 };
