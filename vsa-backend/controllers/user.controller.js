@@ -204,17 +204,31 @@ exports.checkMobile = async (req, res) => {
 };
 
 /* ======================================================
-   GET ALL USERS (ADMIN ONLY)
+   ADMIN: GET ALL USERS
 ====================================================== */
 exports.getAllUsers = async (req, res) => {
   try {
     if (req.user.role !== "admin") {
-      return res.status(403).json({
-        message: "Access denied",
-      });
+      return res.status(403).json({ message: "Access denied" });
     }
 
-    const users = await User.find()
+    const { search, role } = req.query;
+
+    let filter = {};
+
+    if (role) {
+      filter.role = role;
+    }
+
+    if (search) {
+      filter.$or = [
+        { fullName: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { mobile: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const users = await User.find(filter)
       .select("-password")
       .sort({ createdAt: -1 })
       .lean();
@@ -222,8 +236,95 @@ exports.getAllUsers = async (req, res) => {
     res.json(users);
   } catch (err) {
     console.error("GET ALL USERS ERROR:", err);
-    res.status(500).json({
-      message: "Failed to fetch users",
+    res.status(500).json({ message: "Failed to fetch users" });
+  }
+};
+
+/* ======================================================
+   ADMIN: GET SINGLE USER
+====================================================== */
+exports.getUserById = async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const user = await User.findById(req.params.id)
+      .select("-password")
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch user" });
+  }
+};
+
+/* ======================================================
+   ADMIN: UPDATE USER
+====================================================== */
+exports.adminUpdateUser = async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const { password } = req.body; // prevent password update here
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: req.body },
+      { new: true, runValidators: true }
+    ).select("-password");
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({
+      message: "User updated successfully",
+      user: updatedUser,
     });
+  } catch (err) {
+    console.error("ADMIN UPDATE USER ERROR:", err);
+    res.status(500).json({ message: "Failed to update user" });
+  }
+};
+
+/* ======================================================
+   ADMIN: DELETE USER
+====================================================== */
+exports.deleteUser = async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Prevent deleting yourself
+    if (String(user._id) === String(req.user.id)) {
+      return res.status(400).json({
+        message: "You cannot delete your own account",
+      });
+    }
+
+    await User.findByIdAndDelete(req.params.id);
+
+    // Optional: Also delete related data
+    await Enrollment.deleteMany({ userId: user._id });
+    await TurfRental.deleteMany({ userId: user._id });
+
+    res.json({ message: "User deleted successfully" });
+  } catch (err) {
+    console.error("DELETE USER ERROR:", err);
+    res.status(500).json({ message: "Failed to delete user" });
   }
 };

@@ -20,8 +20,9 @@ router.get("/check-mobile/:mobile", ctrl.checkMobile);
 
 
 /* ================= ADMIN ROUTES ================= */
-
-// All users
 router.get("/all", auth, ctrl.getAllUsers);
+router.get("/:id", auth, ctrl.getUserById);
+router.put("/:id", auth, ctrl.adminUpdateUser);
+router.delete("/:id", auth, ctrl.deleteUser);
 
 module.exports = router;
