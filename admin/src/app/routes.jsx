@@ -24,6 +24,8 @@ import TurfRentals from "./pages/turf-rental/TurfRentals";
 /* ================= REPORTS ================= */
 import Reports from "./pages/reports/Reports";
 
+import AdminUsers from "./pages/users/UsersList";
+
 /* ================= INVOICE VIEW ================= */
 import EnrollmentInvoiceView from "./pages/invoice/EnrollmentInvoiceView";
 import TurfInvoiceView from "./pages/invoice/TurfInvoiceview";
@@ -81,6 +83,9 @@ export default function RoutesList() {
 
         {/* ================= REPORTS ================= */}
         <Route path="reports" element={<Reports />} />
+
+        {/* ================= USERS ================= */}
+        <Route path="users" element={<AdminUsers />} />
 
         {/* SETTINGS */}
         <Route path="settings" element={<Settings />} />

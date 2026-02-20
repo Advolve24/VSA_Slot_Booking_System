@@ -28,6 +28,7 @@ const menu = [
   { label: "Facilities", to: "/admin/facilities", icon: Building2 },
   { label: "Reports", to: "/admin/reports", icon: BarChart3 },
   { label: "Settings", to: "/admin/settings", icon: Settings },
+  { label: "Users", to: "/admin/users", icon: Users },
 ];
 
 export default function Sidebar() {
