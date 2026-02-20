@@ -4,8 +4,10 @@ import MainLayout from "@/app/layout/MainLayout";
 
 import Home from "@/pages/Home";
 import EnrollCoaching from "@/pages/enrollment/EnrollCoaching";
+import EnrollmentSuccess from "@/pages/enrollment/EnrollmentSuccess";
 import TurfBooking from "@/pages/booking/TurfBooking";
 import TurfConfirm from "@/pages/booking/TurfConfirm";
+import TurfSuccess from "@/pages/booking/TurfSuccess";
 
 import MyAccount from "@/pages/MyAccount";
 import MyEnrollments from "@/pages/MyEnrollments";
@@ -25,8 +27,10 @@ export default function App() {
           {/* Public */}
           <Route path="/" element={<Home />} />
           <Route path="/enroll" element={<EnrollCoaching />} />
+          <Route path="/enrollment-success" element={<EnrollmentSuccess />} />
           <Route path="/book-turf" element={<TurfBooking />} />
           <Route path="/book-turf/confirm" element={<TurfConfirm />} />
+          <Route path="/turf-success" element={<TurfSuccess />} />
 
           {/* Protected */}
           <Route element={<ProtectedRoute />}>

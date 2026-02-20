@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { getCitiesByState } from "@/lib/location";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Clock, Calendar, Users, User, ArrowLeft, Phone, CheckCircle2 } from "lucide-react";
+import { Clock, Calendar, Users, User, ArrowLeft, Phone, CheckCircle2, Check } from "lucide-react";
 import { sendOtp } from "@/lib/firebase";
 import { Label } from "@/components/ui/label";
 const COUNTRY_NAME = "India";
@@ -45,7 +45,7 @@ export default function EnrollCoaching() {
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [timer, setTimer] = useState(0);
   const timerRef = useRef(null);
-  
+
   /* ================= CHECK VERIFIED MOBILE (NEW USER FLOW) ================= */
   useEffect(() => {
     const verifiedMobile = localStorage.getItem("verifiedMobile");
@@ -95,7 +95,7 @@ export default function EnrollCoaching() {
     setForm((prev) => ({
       ...prev,
       playerName: user.fullName || "",
-      age: user.age ? String(user.age) : "", 
+      age: user.age ? String(user.age) : "",
       mobile: user.mobile || "",
       email: user.email || "",
       city: user.address?.city || "",
@@ -133,45 +133,45 @@ export default function EnrollCoaching() {
   };
 
   const getAutoEnrollmentDiscounts = (planType, batch, sport) => {
-  const now = new Date();
+    const now = new Date();
 
-  return discounts.filter((d) => {
-    if (!d.isActive) return false;
-    if (d.applicableFor !== "enrollment") return false;
+    return discounts.filter((d) => {
+      if (!d.isActive) return false;
+      if (d.applicableFor !== "enrollment") return false;
 
-    // 🚨 IMPORTANT RULE
-    // If discount has a CODE → it is a COUPON → never auto apply
-    if (d.code) return false;
+      // 🚨 IMPORTANT RULE
+      // If discount has a CODE → it is a COUPON → never auto apply
+      if (d.code) return false;
 
-    // plan match
-    if (d.planType && d.planType !== planType) return false;
+      // plan match
+      if (d.planType && d.planType !== planType) return false;
 
-    // sport match
-    if (d.sportId && sport) {
-      const ds =
-        typeof d.sportId === "object"
-          ? d.sportId._id
-          : d.sportId;
+      // sport match
+      if (d.sportId && sport) {
+        const ds =
+          typeof d.sportId === "object"
+            ? d.sportId._id
+            : d.sportId;
 
-      if (String(ds) !== String(sport._id)) return false;
-    }
+        if (String(ds) !== String(sport._id)) return false;
+      }
 
-    // batch match
-    if (d.batchId && batch) {
-      const db =
-        typeof d.batchId === "object"
-          ? d.batchId._id
-          : d.batchId;
+      // batch match
+      if (d.batchId && batch) {
+        const db =
+          typeof d.batchId === "object"
+            ? d.batchId._id
+            : d.batchId;
 
-      if (String(db) !== String(batch._id)) return false;
-    }
+        if (String(db) !== String(batch._id)) return false;
+      }
 
-    if (d.validFrom && new Date(d.validFrom) > now) return false;
-    if (d.validTill && new Date(d.validTill) < now) return false;
+      if (d.validFrom && new Date(d.validFrom) > now) return false;
+      if (d.validTill && new Date(d.validTill) < now) return false;
 
-    return true;
-  });
-};
+      return true;
+    });
+  };
 
 
   /* ================= PRICE CALCULATION ================= */
@@ -204,40 +204,40 @@ export default function EnrollCoaching() {
   }, [selectedBatch, appliedDiscounts, discounts, selectedSport]);
 
   const hasQuarterlyDiscount = (batch, sport) => {
-  const now = new Date();
+    const now = new Date();
 
-  return discounts.some((d) => {
-    if (!d.isActive) return false;
-    if (d.applicableFor !== "enrollment") return false;
+    return discounts.some((d) => {
+      if (!d.isActive) return false;
+      if (d.applicableFor !== "enrollment") return false;
 
-    // must be quarterly AND valid
-    if (d.planType !== "quarterly") return false;
+      // must be quarterly AND valid
+      if (d.planType !== "quarterly") return false;
 
-    // sport filter
-    if (d.sportId && sport) {
-      const ds =
-        typeof d.sportId === "object"
-          ? d.sportId._id
-          : d.sportId;
-      if (String(ds) !== String(sport._id)) return false;
-    }
+      // sport filter
+      if (d.sportId && sport) {
+        const ds =
+          typeof d.sportId === "object"
+            ? d.sportId._id
+            : d.sportId;
+        if (String(ds) !== String(sport._id)) return false;
+      }
 
-    // batch filter
-    if (d.batchId && batch) {
-      const db =
-        typeof d.batchId === "object"
-          ? d.batchId._id
-          : d.batchId;
-      if (String(db) !== String(batch._id)) return false;
-    }
+      // batch filter
+      if (d.batchId && batch) {
+        const db =
+          typeof d.batchId === "object"
+            ? d.batchId._id
+            : d.batchId;
+        if (String(db) !== String(batch._id)) return false;
+      }
 
-    // date validity
-    if (d.validFrom && new Date(d.validFrom) > now) return false;
-    if (d.validTill && new Date(d.validTill) < now) return false;
+      // date validity
+      if (d.validFrom && new Date(d.validFrom) > now) return false;
+      if (d.validTill && new Date(d.validTill) < now) return false;
 
-    return true;
-  });
-};
+      return true;
+    });
+  };
 
   /* ================= OTP TIMER ================= */
   useEffect(() => {
@@ -464,7 +464,7 @@ export default function EnrollCoaching() {
 
         handler: async function (response) {
           try {
-            setProcessingPayment(true); 
+            setProcessingPayment(true);
 
             await api.post("/payments/verify", {
               razorpay_order_id: response.razorpay_order_id,
@@ -474,7 +474,17 @@ export default function EnrollCoaching() {
             });
             toast({ title: "Payment Successful 🎉" });
 
-            navigate("/enrollment-success");  
+            /* ================= SUCCESS NAVIGATION ================= */
+            navigate("/enrollment-success", {
+              state: {
+                userName: form.userName,
+                email: form.email,
+                batchName: selectedBatch.name,
+                sportName: selectedSport.name,
+              },
+              replace: true,
+            });
+
 
             if (!isExistingUser) {
               const loginRes = await api.post("/auth/player-login", {
@@ -487,9 +497,6 @@ export default function EnrollCoaching() {
                 localStorage.removeItem("verifiedMobile");
               }
             }
-
-            toast({ title: "Enrollment successful 🎉" });
-            navigate("/", { replace: true });
 
           } catch {
             toast({
@@ -583,7 +590,6 @@ export default function EnrollCoaching() {
       });
       return;
     }
-
     if (appliedDiscounts.some((d) => d.code === discount.code)) {
       toast({
         variant: "destructive",
@@ -591,37 +597,36 @@ export default function EnrollCoaching() {
       });
       return;
     }
-
     setAppliedDiscounts((prev) => [...prev, discount]);
     setDiscountCodeInput("");
-
     toast({ title: "Discount Applied 🎉" });
   };
-
   const removeDiscount = (code) => {
-  setAppliedDiscounts((prev) =>
-    prev.filter((d) => d.code !== code)
-  );
+    setAppliedDiscounts((prev) =>
+      prev.filter((d) => d.code !== code)
+    );
+    toast({
+      title: "Coupon Removed",
+    });
+  };
 
-  toast({
-    title: "Coupon Removed",
-  });
-};
+  {
+    processingPayment && (
+      <div className="fixed inset-0 bg-white/90 flex items-center justify-center z-50">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-700 mx-auto"></div>
+          <p className="text-green-800 font-semibold">
+            Confirming your enrollment...
+          </p>
+          <p className="text-sm text-gray-500">
+            Please do not close this page
+          </p>
+        </div>
+      </div>
+    )
+  }
 
-{processingPayment && (
-  <div className="fixed inset-0 bg-white/90 flex items-center justify-center z-50">
-    <div className="text-center space-y-4">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-700 mx-auto"></div>
-      <p className="text-green-800 font-semibold">
-        Confirming your enrollment...
-      </p>
-      <p className="text-sm text-gray-500">
-        Please do not close this page
-      </p>
-    </div>
-  </div>
-)}
-
+  const currentStep = selectedBatch ? 3 : selectedSport ? 2 : 1;
 
 
   return (
@@ -635,12 +640,103 @@ export default function EnrollCoaching() {
           Choose the sport and batch that best fits your child's training goals.
         </p>
       </div>
+      {/* ================= STEP HEADER ================= */}
+      <div className="rounded-xl py-3 px-4 mb-6">
+        <div className="flex items-center justify-center">
+          <div className="flex items-center justify-between w-full max-w-2xl">
+
+            {/* STEP 1 */}
+            <div className="flex flex-col sm:flex-row items-center text-center sm:text-left gap-2 sm:gap-3">
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold transition-all
+          ${currentStep > 1
+                    ? "bg-green-700"
+                    : currentStep === 1
+                      ? "bg-green-700"
+                      : "bg-gray-400"
+                  }`}
+              >
+                {currentStep > 1 ? (
+                  <Check className="w-4 h-4" />
+                ) : (
+                  1
+                )}
+              </div>
+
+              <span
+                className={`text-xs sm:text-sm whitespace-nowrap ${currentStep >= 1 ? "text-gray-800" : "text-gray-400"
+                  }`}
+              >
+                Select Sport
+              </span>
+            </div>
+
+            {/* LINE */}
+            <div
+              className={`flex-1 h-[2px] mx-2 sm:mx-4 transition-all ${currentStep > 1 ? "bg-green-700" : "bg-gray-300"
+                }`}
+            />
+
+            {/* STEP 2 */}
+            <div className="flex flex-col sm:flex-row items-center text-center sm:text-left gap-2 sm:gap-3">
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold transition-all
+          ${currentStep > 2
+                    ? "bg-green-700"
+                    : currentStep === 2
+                      ? "bg-green-700"
+                      : "bg-gray-400"
+                  }`}
+              >
+                {currentStep > 2 ? (
+                  <Check className="w-4 h-4" />
+                ) : (
+                  2
+                )}
+              </div>
+
+              <span
+                className={`text-xs sm:text-sm whitespace-nowrap ${currentStep >= 2 ? "text-gray-800" : "text-gray-400"
+                  }`}
+              >
+                Choose Batch
+              </span>
+            </div>
+
+            {/* LINE */}
+            <div
+              className={`flex-1 h-[2px] mx-2 sm:mx-4 transition-all ${currentStep > 2 ? "bg-green-700" : "bg-gray-300"
+                }`}
+            />
+
+            {/* STEP 3 */}
+            <div className="flex flex-col sm:flex-row items-center text-center sm:text-left gap-2 sm:gap-3">
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold transition-all
+          ${currentStep === 3
+                    ? "bg-green-700"
+                    : "bg-gray-400"
+                  }`}
+              >
+                3
+              </div>
+
+              <span
+                className={`text-xs sm:text-sm whitespace-nowrap ${currentStep >= 3 ? "text-gray-800" : "text-gray-400"
+                  }`}
+              >
+                Enroll
+              </span>
+            </div>
+
+          </div>
+        </div>
+      </div>
       {/* ================= SPORT + BATCH SELECTION ================= */}
       {!selectedBatch && (
         <>
           <h2 className="font-semibold text-green-700">Select a Sport</h2>
 
-          {/* ================= SPORTS GRID ================= */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-5">
             {sports.map((s) => (
               <button
@@ -664,7 +760,6 @@ export default function EnrollCoaching() {
               </button>
             ))}
           </div>
-
           {/* ================= BATCHES ================= */}
           {selectedSport && (
             <>
@@ -872,44 +967,43 @@ export default function EnrollCoaching() {
       {selectedBatch && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* ===== LEFT : SUMMARY CARD ===== */}
+          {/* ===== LEFT : STICKY PAYMENT SUMMARY ===== */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-2xl shadow overflow-hidden border">
 
-              <img
-                src={`${ASSETS_BASE}${selectedSport.iconUrl}`}
-                className="h-48 w-full object-cover"
-                alt={selectedSport.name}
-              />
+            <div className="lg:sticky lg:top-24">
 
-              <div className="p-5 space-y-4">
+              <div className="bg-white rounded-2xl shadow-md border p-6 space-y-6">
 
-                {/* TITLE */}
-                <h2 className="text-lg font-semibold">
-                  {selectedBatch.name}
+                {/* ================= HEADER ================= */}
+                <h2 className="text-xl font-semibold text-gray-800">
+                  Payment Summary
                 </h2>
 
-                {/* SPORT */}
-                <p className="text-sm text-gray-600">
-                  Sport:{" "}
-                  <span className="font-medium text-gray-800">
-                    {selectedSport.name}
-                  </span>
-                </p>
+                {/* ================= BASIC DETAILS ================= */}
+                <div className="space-y-3 text-sm">
 
-                {/* PLAN */}
-                <p className="text-sm text-gray-600">
-                  Plan:{" "}
-                  <span className="font-medium text-gray-800 capitalize">
-                    {selectedBatch.selectedPlan}
-                  </span>
-                </p>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Sport</span>
+                    <span className="font-medium text-gray-800">
+                      {selectedSport.name}
+                    </span>
+                  </div>
 
-                {/* DURATION */}
-                <p className="text-sm text-gray-600">
-                  Duration:{" "}
-                  {format(new Date(selectedBatch.startDate), "dd MMM yyyy")} –{" "}
-                  {format(new Date(selectedBatch.endDate), "dd MMM yyyy")}
-                </p>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Batch</span>
+                    <span className="font-medium text-gray-800">
+                      {selectedBatch.name}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Plan</span>
+                    <span className="font-medium text-gray-800 capitalize">
+                      {selectedBatch.selectedPlan}
+                    </span>
+                  </div>
+
+                </div>
 
                 <hr />
 
@@ -918,7 +1012,7 @@ export default function EnrollCoaching() {
 
                   {/* BASE PRICE */}
                   <div className="flex justify-between">
-                    <span>
+                    <span className="text-gray-600">
                       {selectedBatch.selectedPlan === "monthly"
                         ? "Monthly Fee"
                         : "Quarterly Fee"}
@@ -928,7 +1022,7 @@ export default function EnrollCoaching() {
                     </span>
                   </div>
 
-                  {/* INDIVIDUAL DISCOUNTS WITH ACTUAL VALUE */}
+                  {/* DISCOUNTS */}
                   {priceDetails?.discounts?.length > 0 &&
                     priceDetails.discounts.map((d, i) => {
 
@@ -966,9 +1060,9 @@ export default function EnrollCoaching() {
                   <hr />
 
                   {/* TOTAL */}
-                  <div className="flex justify-between font-semibold text-green-700 text-lg">
+                  <div className="flex justify-between text-lg font-semibold">
                     <span>Total</span>
-                    <span>
+                    <span className="text-green-700">
                       ₹ {priceDetails?.finalPrice?.toLocaleString()}
                     </span>
                   </div>
@@ -976,9 +1070,9 @@ export default function EnrollCoaching() {
                 </div>
 
               </div>
+
             </div>
           </div>
-
 
 
           {/* ===== RIGHT : FORM ===== */}

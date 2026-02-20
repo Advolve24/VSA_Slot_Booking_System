@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { format, isBefore, startOfDay } from "date-fns";
+import { Check, ArrowLeft, CalendarIcon } from "lucide-react";
 
 import api from "@/lib/axios";
 import { cn } from "@/lib/utils";
@@ -8,21 +9,95 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { CalendarIcon } from "lucide-react";
 
 const ASSETS_BASE =
   import.meta.env.VITE_ASSETS_BASE_URL || "http://localhost:5000";
+
+/* ===================== STEPPER ===================== */
+
+const Stepper = ({ active }) => {
+  const steps = [
+    "Sport",
+    "Facility & Date",
+    "Time Slot",
+    "Review & Details",
+  ];
+
+  return (
+    <div className="w-full mb-8">
+      <div className="flex items-center justify-center">
+        <div className="flex items-center justify-between w-full max-w-3xl">
+
+          {steps.map((label, index) => {
+            const step = index + 1;
+            const isCompleted = active > step;
+            const isActive = active === step;
+            const isLast = step === steps.length;
+
+            return (
+              <div key={step} className="flex items-center flex-1">
+
+                {/* STEP */}
+                <div className="flex flex-col sm:flex-row items-center text-center sm:text-left gap-2 sm:gap-3">
+
+                  <div
+                    className={`
+                      w-8 h-8 md:w-9 md:h-9
+                      rounded-full flex items-center justify-center
+                      text-white text-sm font-semibold
+                      transition-all duration-300
+                      ${
+                        isCompleted
+                          ? "bg-green-700"
+                          : isActive
+                          ? "bg-green-600"
+                          : "bg-gray-300 text-gray-500"
+                      }
+                    `}
+                  >
+                    {isCompleted ? <Check size={16} /> : step}
+                  </div>
+
+                  <span
+                    className={`
+                      text-[11px] sm:text-sm font-medium whitespace-nowrap
+                      ${
+                        isCompleted || isActive
+                          ? "text-green-700"
+                          : "text-gray-400"
+                      }
+                    `}
+                  >
+                    {label}
+                  </span>
+                </div>
+
+                {/* CONNECTOR */}
+                {!isLast && (
+                  <div
+                    className={`
+                      flex-1 h-[2px] mx-2 sm:mx-4 transition-all duration-300
+                      ${
+                        active > step
+                          ? "bg-green-700"
+                          : "bg-gray-300"
+                      }
+                    `}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+/* ===================== MAIN COMPONENT ===================== */
 
 export default function TurfBooking() {
   const navigate = useNavigate();
@@ -34,41 +109,42 @@ export default function TurfBooking() {
 
   /* ================= SELECTION ================= */
   const [sport, setSport] = useState(null);
-  const [facilityId, setFacilityId] = useState("");
+  const [facility, setFacility] = useState(null);
   const [date, setDate] = useState(null);
   const [selectedSlots, setSelectedSlots] = useState([]);
 
-  /* ================= LOAD ================= */
+  /* ================= LOAD INITIAL DATA ================= */
   useEffect(() => {
-    api.get("/sports").then((r) => setSports(r.data));
-    api.get("/facilities").then((r) =>
-      setFacilities(r.data.filter((f) => f.status === "active"))
+    api.get("/sports").then((res) => setSports(res.data));
+    api.get("/facilities").then((res) =>
+      setFacilities(res.data.filter((f) => f.status === "active"))
     );
   }, []);
 
-  /* ================= FILTER FACILITIES BY SPORT ================= */
-  const supportedFacilities = useMemo(() => {
+  /* ================= FILTER FACILITY BY SPORT ================= */
+  const filteredFacilities = useMemo(() => {
     if (!sport) return [];
     return facilities.filter((f) =>
       f.sports?.some((s) => s._id === sport._id)
     );
   }, [sport, facilities]);
 
-  const selectedFacility = facilities.find((f) => f._id === facilityId);
-
   /* ================= LOAD SLOTS ================= */
   useEffect(() => {
-    if (!facilityId || !date) return;
+    if (!facility || !date) return;
 
     api
       .get(
-        `/facilities/${facilityId}/slots?date=${format(date, "yyyy-MM-dd")}`
+        `/facilities/${facility._id}/slots?date=${format(
+          date,
+          "yyyy-MM-dd"
+        )}`
       )
-      .then((r) => {
-        setSlots(r.data || []);
+      .then((res) => {
+        setSlots(res.data || []);
         setSelectedSlots([]);
       });
-  }, [facilityId, date]);
+  }, [facility, date]);
 
   /* ================= SLOT TOGGLE ================= */
   const toggleSlot = (slot) => {
@@ -81,170 +157,224 @@ export default function TurfBooking() {
     );
   };
 
+  /* ================= BACK BUTTON LOGIC ================= */
+  const handleBack = () => {
+    if (selectedSlots.length > 0) {
+      setSelectedSlots([]);
+      return;
+    }
+
+    if (date) {
+      setDate(null);
+      setSlots([]);
+      return;
+    }
+
+    if (facility) {
+      setFacility(null);
+      return;
+    }
+
+    if (sport) {
+      setSport(null);
+      return;
+    }
+  };
+
   /* ================= CONTINUE ================= */
   const handleContinue = () => {
     navigate("/book-turf/confirm", {
       state: {
         sportId: sport._id,
-        sportImage: sport.iconUrl,
         sportName: sport.name,
-        facilityId,
-        facilityName: selectedFacility.name,
+        sportImage: sport.iconUrl,
+        facilityId: facility._id,
+        facilityName: facility.name,
         date: format(date, "yyyy-MM-dd"),
-        slots: slots.filter((s) => selectedSlots.includes(s.time)),
-        hourlyRate: selectedFacility.hourlyRate,
+        slots: slots.filter((s) =>
+          selectedSlots.includes(s.time)
+        ),
+        hourlyRate: facility.hourlyRate,
       },
     });
   };
 
+  /* ================= ACTIVE STEP ================= */
+  const getActiveStep = () => {
+    if (!sport) return 1;
+    if (!facility || !date) return 2;
+    if (!selectedSlots.length) return 3;
+    return 4;
+  };
+
+  const activeStep = getActiveStep();
+
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
+    <div className="max-w-5xl mx-auto py-6 px-4 space-y-4">
+
+      {/* ================= STEPPER ================= */}
+      <Stepper active={activeStep} />
+
+      {/* ================= BACK BUTTON ================= */}
+      {activeStep > 1 && (
+        <div>
+          <Button
+            variant="ghost"
+            onClick={handleBack}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft size={18} />
+            Back
+          </Button>
+        </div>
+      )}
+
       {/* ================= TITLE ================= */}
-      <div>
-        <h1 className="text-2xl font-bold text-green-800">
-          Book Facility
+      <div className="text-center ">
+        <h1 className="text-2xl md:text-3xl font-bold text-green-800">
+          Book Your Session
         </h1>
-        <p className="text-sm text-gray-600">
-          Choose sport, facility, date and slots
+        <p className="text-gray-500 mt-2 text-sm md:text-base">
+          Select sport, facility, date and time slot
         </p>
       </div>
 
-      {/* ================= SPORT (IMAGE GRID) ================= */}
-      <section>
-        <h2 className="text-xl font-semibold text-green-800 mb-4">
-          Select Sport
-        </h2>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-5">
+      {/* ================= SPORT LIST ================= */}
+      {!sport && (
+        <div className="space-y-4">
           {sports.map((s) => (
-            <button
+            <div
               key={s._id}
-              onClick={() => {
-                setSport(s);
-                setFacilityId("");
-                setDate(null);
-                setSlots([]);
-                setSelectedSlots([]);
-              }}
-              className={cn(
-                "relative h-36 rounded-xl overflow-hidden transition",
-                sport?._id === s._id
-                  ? "ring-4 ring-green-700"
-                  : "hover:ring-2 hover:ring-green-400"
-              )}
+              onClick={() => setSport(s)}
+              className="flex items-center justify-between p-4 rounded-2xl border hover:border-green-600 cursor-pointer transition"
             >
-              <img
-                src={`${ASSETS_BASE}${s.iconUrl}`}
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-              <div className="absolute bottom-3 w-full text-center text-white font-semibold">
-                {s.name}
+              <div className="flex items-center gap-4">
+                <img
+                  src={`${ASSETS_BASE}${s.iconUrl}`}
+                  alt={s.name}
+                  className="w-14 h-14 md:w-16 md:h-16 rounded-xl object-cover"
+                />
+                <div>
+                  <h3 className="font-semibold text-base md:text-lg">
+                    {s.name}
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    Click to continue
+                  </p>
+                </div>
               </div>
-            </button>
+
+              <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center">
+                →
+              </div>
+            </div>
           ))}
         </div>
-      </section>
+      )}
 
-      {/* ================= FACILITY + DATE (ONE ROW) ================= */}
-      {sport && (
-        <section>
-          <h2 className="text-xl font-semibold text-green-800 mb-4">
-            Select Facility & Date
-          </h2>
+      {/* ================= FACILITY + DATE ================= */}
+      {sport && !selectedSlots.length && (
+        <div className="grid md:grid-cols-2 gap-8">
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* FACILITY DROPDOWN */}
-            <div>
-              <label className="text-sm font-medium">Facility</label>
-              <Select
-                value={facilityId}
-                onValueChange={(v) => {
-                  setFacilityId(v);
-                  setDate(null);
-                  setSlots([]);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Facility" />
-                </SelectTrigger>
-                <SelectContent>
-                  {supportedFacilities.map((f) => (
-                    <SelectItem key={f._id} value={f._id}>
-                      {f.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* FACILITIES */}
+          <div>
+            <h2 className="font-semibold mb-3">
+              Select Facility
+            </h2>
 
-            {/* DATE PICKER */}
-            <div>
-              <label className="text-sm font-medium">Date</label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start"
-                    disabled={!facilityId}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {date ? format(date, "dd MMM yyyy") : "Select date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent>
-                  <Calendar
-                    mode="single"
-                    selected={date}
-                    onSelect={setDate}
-                    disabled={(d) =>
-                      isBefore(d, startOfDay(new Date()))
-                    }
-                  />
-                </PopoverContent>
-              </Popover>
+            <div className="space-y-3">
+              {filteredFacilities.map((f) => (
+                <div
+                  key={f._id}
+                  onClick={() => setFacility(f)}
+                  className={cn(
+                    "p-4 rounded-xl border cursor-pointer transition",
+                    facility?._id === f._id
+                      ? "border-green-700 bg-green-50"
+                      : "hover:border-green-500"
+                  )}
+                >
+                  <h3 className="font-medium">{f.name}</h3>
+                  <p className="text-sm text-gray-500">
+                    ₹{f.hourlyRate}/hour
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
-        </section>
+
+          {/* DATE */}
+          <div>
+            <h2 className="font-semibold mb-3">
+              Select Date
+            </h2>
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start"
+                  disabled={!facility}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {date
+                    ? format(date, "dd MMM yyyy")
+                    : "Pick a date"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent>
+                <Calendar
+                  mode="single"
+                  selected={date}
+                  onSelect={setDate}
+                  disabled={(d) =>
+                    isBefore(d, startOfDay(new Date()))
+                  }
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
       )}
 
       {/* ================= SLOTS ================= */}
       {slots.length > 0 && (
-        <section>
-          <h2 className="text-xl font-semibold text-green-800 mb-4">
-            Select Slots
+        <div>
+          <h2 className="font-semibold mb-4 text-center">
+            Pick a Time Slot
           </h2>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="grid grid-cols-2 md:flex md:flex-wrap md:justify-center gap-4">
             {slots.map((slot) => (
               <button
                 key={slot.time}
-                onClick={() => toggleSlot(slot)}
                 disabled={slot.status !== "available"}
+                onClick={() => toggleSlot(slot)}
                 className={cn(
-                  "px-4 py-2 rounded-lg border text-sm",
-                  slot.status !== "available" &&
-                    "opacity-40 cursor-not-allowed",
+                  "px-1 sm:px-6 py-2 sm:py-3 rounded-xl border text-sm font-medium transition",
                   selectedSlots.includes(slot.time)
                     ? "bg-green-700 text-white"
-                    : "border-green-600 bg-green-50 text-green-700"
+                    : "bg-white border-gray-300 hover:border-green-600",
+                  slot.status !== "available" &&
+                    "opacity-40 cursor-not-allowed"
                 )}
               >
                 {slot.label}
               </button>
             ))}
           </div>
-        </section>
+        </div>
       )}
 
       {/* ================= CONTINUE ================= */}
-      <Button
-        disabled={!facilityId || !date || !selectedSlots.length}
-        onClick={handleContinue}
-        className="w-full bg-orange-500 hover:bg-orange-600 py-6 text-lg"
-      >
-        Continue
-      </Button>
+      {selectedSlots.length > 0 && (
+        <Button
+          onClick={handleContinue}
+          className="w-full bg-green-700 hover:bg-green-800 py-6 text-lg rounded-xl"
+        >
+          Continue to Review
+        </Button>
+      )}
     </div>
   );
 }

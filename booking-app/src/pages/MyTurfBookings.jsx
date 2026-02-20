@@ -12,6 +12,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { format } from "date-fns";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 /* ================= SAFE DATE ================= */
 function safeDate(d) {
@@ -27,24 +28,23 @@ function fmt(d, pattern = "dd MMM yyyy") {
   return dt ? format(dt, pattern) : "-";
 }
 
-/* ================= TIME FORMAT (FIXED AM/PM) ================= */
-function formatTime12h(time) {
-  if (!time) return "";
-  const [h, m] = time.split(":").map(Number);
-  const hour12 = h % 12 || 12;
-  const suffix = h >= 12 ? "PM" : "AM";
-  return m === 0
-    ? `${hour12} ${suffix}`
-    : `${hour12}:${m.toString().padStart(2, "0")} ${suffix}`;
-}
-
 export default function MyTurfBookings() {
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState([]);
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [isMobile, setIsMobile] = useState(false);
 
+  /* ================= RESPONSIVE CHECK ================= */
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  /* ================= FETCH BOOKINGS ================= */
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -67,7 +67,6 @@ export default function MyTurfBookings() {
 
   return (
     <>
-      {/* ================= TABLE SECTION ================= */}
       <div className="max-w-6xl mx-auto py-6 px-4">
         <h1 className="text-xl font-semibold mb-4 text-green-800">
           My Turf Bookings
@@ -78,209 +77,288 @@ export default function MyTurfBookings() {
             No turf bookings found.
           </div>
         ) : (
-          <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-left">
-                  <tr>
-                    <th className="p-3">Facility</th>
-                    <th className="p-3">Sport</th>
-                    <th className="p-3">Date</th>
-                    <th className="p-3">Amount</th>
-                    <th className="p-3">Status</th>
-                    <th className="p-3 text-center">Action</th>
-                  </tr>
-                </thead>
+          <>
+            {/* ================= DESKTOP TABLE ================= */}
+            <div className="hidden md:block bg-white border rounded-lg overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-left">
+                    <tr>
+                      <th className="p-3">Facility</th>
+                      <th className="p-3">Sport</th>
+                      <th className="p-3">Date</th>
+                      <th className="p-3">Amount</th>
+                      <th className="p-3">Status</th>
+                      <th className="p-3 text-center">Action</th>
+                    </tr>
+                  </thead>
 
-                <tbody>
-                  {bookings.map((item) => {
-                    const statusColor =
-                      item.bookingStatus === "confirmed"
-                        ? "bg-green-100 text-green-700"
-                        : item.bookingStatus === "cancelled"
-                        ? "bg-red-100 text-red-700"
-                        : "bg-yellow-100 text-yellow-700";
+                  <tbody>
+                    {bookings.map((item) => {
+                      const statusColor =
+                        item.bookingStatus === "confirmed"
+                          ? "bg-green-100 text-green-700"
+                          : item.bookingStatus === "cancelled"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-yellow-100 text-yellow-700";
 
-                    return (
-                      <tr
-                        key={item._id}
-                        className="border-t hover:bg-gray-50 transition cursor-pointer"
-                        onClick={() => setSelectedBooking(item)}
-                      >
-                        <td className="p-3 font-medium">
-                          {item.facilityName}
-                        </td>
-
-                        <td className="p-3">
-                          {item.sportName}
-                        </td>
-
-                        <td className="p-3">
-                          {fmt(item.rentalDate)}
-                        </td>
-
-                        <td className="p-3 font-medium text-green-700">
-                          ₹{item.finalAmount ?? item.totalAmount}
-                        </td>
-
-                        <td className="p-3">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-xs capitalize ${statusColor}`}
-                          >
-                            {item.bookingStatus}
-                          </span>
-                        </td>
-
-                        <td
-                          className="p-3 text-center"
-                          onClick={(e) => e.stopPropagation()}
+                      return (
+                        <tr
+                          key={item._id}
+                          className="border-t hover:bg-gray-50 transition"
                         >
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setSelectedBooking(item)}
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          <td className="p-3 font-medium">
+                            {item.facilityName}
+                          </td>
+
+                          <td className="p-3">{item.sportName}</td>
+
+                          <td className="p-3">
+                            {fmt(item.rentalDate)}
+                          </td>
+
+                          <td className="p-3 font-medium text-green-700">
+                            ₹{item.finalAmount ?? item.totalAmount}
+                          </td>
+
+                          <td className="p-3">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-xs capitalize ${statusColor}`}
+                            >
+                              {item.bookingStatus}
+                            </span>
+                          </td>
+
+                          <td className="p-3 text-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                setSelectedBooking(item)
+                              }
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              View
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+
+            {/* ================= MOBILE CARD VIEW ================= */}
+            <div className="md:hidden space-y-4">
+              {bookings.map((item) => {
+                const statusColor =
+                  item.bookingStatus === "confirmed"
+                    ? "bg-green-100 text-green-700"
+                    : item.bookingStatus === "cancelled"
+                    ? "bg-red-100 text-red-700"
+                    : "bg-yellow-100 text-yellow-700";
+
+                return (
+                  <div
+                    key={item._id}
+                    className="bg-white border rounded-xl p-4 shadow-sm"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-semibold">
+                          {item.facilityName}
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                          {item.sportName}
+                        </p>
+                      </div>
+
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs capitalize ${statusColor}`}
+                      >
+                        {item.bookingStatus}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 flex justify-between text-sm text-gray-600">
+                      <span>
+                        {fmt(item.rentalDate)}
+                      </span>
+                      <span className="font-medium text-green-700">
+                        ₹{item.finalAmount ?? item.totalAmount}
+                      </span>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-3 w-full"
+                      onClick={() =>
+                        setSelectedBooking(item)
+                      }
+                    >
+                      View Details
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 
-      {/* ================= DETAILS MODAL ================= */}
-      {selectedBooking && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl p-6 relative">
+      {/* ================= DETAILS (DESKTOP MODAL / MOBILE SHEET) ================= */}
 
-            {/* CLOSE BUTTON */}
-            <button
-              onClick={() => setSelectedBooking(null)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-800"
-            >
-              <X className="w-4 h-4" />
-            </button>
+      {isMobile ? (
+        <Sheet
+          open={!!selectedBooking}
+          onOpenChange={() => setSelectedBooking(null)}
+        >
+          <SheetContent
+            side="bottom"
+            className="h-[80vh] rounded-t-2xl"
+          >
+            {selectedBooking && (
+              <BookingDetails
+                booking={selectedBooking}
+              />
+            )}
+          </SheetContent>
+        </Sheet>
+      ) : (
+        selectedBooking && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl p-6 relative">
+              <button
+                onClick={() => setSelectedBooking(null)}
+                className="absolute top-4 right-4 text-gray-500 hover:text-gray-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
 
-            {/* HEADER */}
-            <h2 className="text-lg font-semibold text-green-800 mb-1">
-              {selectedBooking.facilityName}
-            </h2>
+              <BookingDetails
+                booking={selectedBooking}
+              />
+            </div>
+          </div>
+        )
+      )}
+    </>
+  );
+}
 
-            <p className="text-xs text-gray-500 mb-3">
-              Booking ID: {selectedBooking._id}
+/* ================= DETAILS COMPONENT ================= */
+function BookingDetails({ booking }) {
+  return (
+    <>
+      <h2 className="text-lg font-semibold text-green-800 mb-1">
+        {booking.facilityName}
+      </h2>
+
+      <p className="text-xs text-gray-500 mb-3">
+        Booking ID: {booking._id}
+      </p>
+
+      <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[11px] mb-4 capitalize">
+        <CheckCircle className="w-3 h-3" />
+        {booking.bookingStatus}
+      </span>
+
+      <div className="border-t mb-4"></div>
+
+      <div className="space-y-4 text-sm">
+        <div className="flex gap-2">
+          <Calendar className="text-green-700 w-4 h-4 mt-1" />
+          <div>
+            <p className="font-medium">
+              {format(new Date(booking.rentalDate), "dd MMM yyyy")}
             </p>
-
-            <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[11px] mb-4 capitalize">
-              <CheckCircle className="w-3 h-3" />
-              {selectedBooking.bookingStatus}
-            </span>
-
-            <div className="border-t mb-4"></div>
-
-            {/* ================= INFO GRID ================= */}
-            <div className="space-y-4 text-sm">
-
-              {/* DATE */}
-              <div className="flex gap-2">
-                <Calendar className="text-green-700 w-4 h-4 mt-1" />
-                <div>
-                  <p className="font-medium">
-                    {fmt(selectedBooking.rentalDate)}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Booking Date
-                  </p>
-                </div>
-              </div>
-
-              {/* SPORT + FACILITY IN ONE ROW */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex gap-2">
-                  <Trophy className="text-green-700 w-4 h-4 mt-1" />
-                  <div>
-                    <p className="font-medium">
-                      {selectedBooking.sportName}
-                    </p>
-                    <p className="text-xs text-gray-500">Sport</p>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <MapPin className="text-green-700 w-4 h-4 mt-1" />
-                  <div>
-                    <p className="font-medium">
-                      {selectedBooking.facilityName}
-                    </p>
-                    <p className="text-xs text-gray-500">Facility</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* SLOTS */}
-              <div className="flex gap-2">
-                <Clock className="text-green-700 w-4 h-4 mt-1" />
-                <div>
-                  <p className="font-medium mb-1">Booked Slots</p>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedBooking.slotLabels?.map((slot, i) => (
-                      <span
-                        key={i}
-                        className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full"
-                      >
-                        {slot}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-            </div>
-
-            <div className="border-t my-4"></div>
-
-            {/* ================= AMOUNT SECTION ================= */}
-            <div className="space-y-2 text-sm">
-
-              <div className="flex justify-between">
-                <span>Duration</span>
-                <span>
-                  {selectedBooking.durationHours}{" "}
-                  {selectedBooking.durationHours === 1
-                    ? "hour"
-                    : "hours"}
-                </span>
-              </div>
-
-              <div className="flex justify-between">
-                <span>Rate</span>
-                <span>₹{selectedBooking.hourlyRate}</span>
-              </div>
-
-              {selectedBooking.totalDiscountAmount > 0 && (
-                <div className="flex justify-between text-green-600 text-xs">
-                  <span>Discount</span>
-                  <span>- ₹{selectedBooking.totalDiscountAmount}</span>
-                </div>
-              )}
-
-              <div className="border-t pt-2 flex justify-between font-semibold text-base text-green-700">
-                <span>Total Amount</span>
-                <span>
-                  ₹{selectedBooking.finalAmount ?? selectedBooking.totalAmount}
-                </span>
-              </div>
-
-            </div>
-
+            <p className="text-xs text-gray-500">
+              Booking Date
+            </p>
           </div>
         </div>
-      )}
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex gap-2">
+            <Trophy className="text-green-700 w-4 h-4 mt-1" />
+            <div>
+              <p className="font-medium">
+                {booking.sportName}
+              </p>
+              <p className="text-xs text-gray-500">
+                Sport
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <MapPin className="text-green-700 w-4 h-4 mt-1" />
+            <div>
+              <p className="font-medium">
+                {booking.facilityName}
+              </p>
+              <p className="text-xs text-gray-500">
+                Facility
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <Clock className="text-green-700 w-4 h-4 mt-1" />
+          <div>
+            <p className="font-medium mb-1">
+              Booked Slots
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {booking.slotLabels?.map((slot, i) => (
+                <span
+                  key={i}
+                  className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full"
+                >
+                  {slot}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t my-4"></div>
+
+      <div className="space-y-2 text-sm">
+        <div className="flex justify-between">
+          <span>Duration</span>
+          <span>
+            {booking.durationHours} hour
+            {booking.durationHours > 1 && "s"}
+          </span>
+        </div>
+
+        <div className="flex justify-between">
+          <span>Rate</span>
+          <span>₹{booking.hourlyRate}</span>
+        </div>
+
+        {booking.totalDiscountAmount > 0 && (
+          <div className="flex justify-between text-green-600 text-xs">
+            <span>Discount</span>
+            <span>
+              - ₹{booking.totalDiscountAmount}
+            </span>
+          </div>
+        )}
+
+        <div className="border-t pt-2 flex justify-between font-semibold text-base text-green-700">
+          <span>Total Amount</span>
+          <span>
+            ₹{booking.finalAmount ??
+              booking.totalAmount}
+          </span>
+        </div>
+      </div>
     </>
   );
 }

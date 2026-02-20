@@ -17,6 +17,7 @@ export default function MyAccount() {
   const { toast } = useToast();
 
   const [user, setUser] = useState(null);
+  const [originalData, setOriginalData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -44,6 +45,7 @@ export default function MyAccount() {
         const res = await api.get("/users/me");
 
         setUser(res.data);
+        setOriginalData(res.data);
 
         setForm({
           fullName: res.data.fullName || "",
@@ -81,6 +83,7 @@ export default function MyAccount() {
       const res = await api.put("/users/update", payload);
 
       setUser(res.data.user);
+      setOriginalData(res.data.user);
       setEditing(false);
 
       toast({ title: "Profile updated successfully ✅" });
@@ -92,6 +95,25 @@ export default function MyAccount() {
     } finally {
       setSaving(false);
     }
+  };
+
+  /* ================= CANCEL EDIT ================= */
+  const cancelEdit = () => {
+    if (!originalData) return;
+
+    setForm({
+      fullName: originalData.fullName || "",
+      email: originalData.email || "",
+      mobile: originalData.mobile || "",
+      address: {
+        country: "India",
+        state: "Maharashtra",
+        city: originalData.address?.city || "",
+        localAddress: originalData.address?.localAddress || "",
+      },
+    });
+
+    setEditing(false);
   };
 
   if (loading) return <div className="py-20 text-center">Loading...</div>;
@@ -110,17 +132,17 @@ export default function MyAccount() {
         </p>
       </div>
 
-      {/* CARD */}
+      {/* PROFILE CARD */}
       <div className="bg-white border rounded-2xl shadow-sm p-6">
 
         {/* HEADER */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-green-700 text-white flex items-center justify-center font-semibold">
-              {form.fullName?.charAt(0)?.toUpperCase()}
+            <div className="w-14 h-14 rounded-full bg-green-700 text-white flex items-center justify-center text-lg font-semibold">
+              {form.fullName?.charAt(0)?.toUpperCase() || "U"}
             </div>
             <div>
-              <p className="font-semibold">{form.fullName}</p>
+              <p className="font-semibold text-lg">{form.fullName}</p>
               <p className="text-sm text-gray-500">{form.email}</p>
             </div>
           </div>
@@ -130,7 +152,7 @@ export default function MyAccount() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setEditing(false)}
+                onClick={cancelEdit}
               >
                 Cancel
               </Button>
@@ -152,7 +174,6 @@ export default function MyAccount() {
         {/* FORM */}
         <div className="grid md:grid-cols-2 gap-5">
 
-          {/* NAME */}
           <div>
             <Label>Name</Label>
             <Input
@@ -164,25 +185,21 @@ export default function MyAccount() {
             />
           </div>
 
-          {/* EMAIL */}
           <div>
             <Label>Email</Label>
             <Input disabled value={form.email} />
           </div>
 
-          {/* PHONE (DISABLED PERMANENTLY) */}
           <div>
             <Label>Phone</Label>
             <Input disabled value={form.mobile} />
           </div>
 
-          {/* STATE */}
           <div>
             <Label>State</Label>
             <Input disabled value="Maharashtra" />
           </div>
 
-          {/* ADDRESS */}
           <div className="md:col-span-2">
             <Label>Address</Label>
             <Input
@@ -200,7 +217,6 @@ export default function MyAccount() {
             />
           </div>
 
-          {/* CITY */}
           <div>
             <Label>City</Label>
             <Select
@@ -220,26 +236,29 @@ export default function MyAccount() {
                 <SelectValue placeholder="Select City" />
               </SelectTrigger>
               <SelectContent>
-                {cities.map((city) => (
-                  <SelectItem key={city.name} value={city.name}>
-                    {city.name}
+                {cities.map((city, i) => (
+                  <SelectItem
+                    key={i}
+                    value={city.name || city}
+                  >
+                    {city.name || city}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          {/* COUNTRY */}
           <div>
             <Label>Country</Label>
             <Input disabled value="India" />
           </div>
 
         </div>
+
       </div>
 
       {/* DANGER ZONE */}
-      <div className="mt-6 border border-red-200 rounded-2xl p-5 bg-red-50 flex justify-between items-center">
+      <div className="mt-6 border border-red-200 rounded-2xl p-5 bg-red-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <p className="font-semibold text-red-600">
             Danger Zone
@@ -248,6 +267,7 @@ export default function MyAccount() {
             Permanently delete your account
           </p>
         </div>
+
         <Button variant="destructive">
           Delete Account
         </Button>
