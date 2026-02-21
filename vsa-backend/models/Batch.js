@@ -3,9 +3,9 @@ const mongoose = require("mongoose");
 
 const batchSchema = new mongoose.Schema(
   {
-    name: { 
-      type: String, 
-      required: true 
+    name: {
+      type: String,
+      required: true
     },
 
     sportId: {
@@ -31,31 +31,31 @@ const batchSchema = new mongoose.Schema(
       required: true,
     },
 
-    coachName: { 
-      type: String, 
-      required: true 
+    coachName: {
+      type: String,
+      required: true
     },
 
-    schedule: { 
-      type: String, 
-      required: true 
+    schedule: {
+      type: String,
+      required: true
     },
 
-    startDate: { 
-      type: Date, 
-      required: true 
+    startDate: {
+      type: Date,
+      required: true
     },
 
-    endDate: { 
-      type: Date, 
-      required: true 
+    endDate: {
+      type: Date,
+      required: true
     },
 
     /* ================= PRICING ================= */
 
-    monthlyFee: { 
-      type: Number, 
-      required: true 
+    monthlyFee: {
+      type: Number,
+      required: true
     },
 
     // 🔥 NEW: Allow quarterly plan
@@ -70,34 +70,34 @@ const batchSchema = new mongoose.Schema(
       default: 3, // monthly * 3
     },
 
-    capacity: { 
-      type: Number, 
-      required: true 
+    capacity: {
+      type: Number,
+      required: true
     },
 
-    enrolledCount: { 
-      type: Number, 
-      default: 0 
+    enrolledCount: {
+      type: Number,
+      default: 0
     },
 
     status: {
       type: String,
-      enum: ["active", "full", "inactive"],
+      enum: ["active", "full", "inactive", "expired", "upcoming"],
       default: "active",
     },
   },
   { timestamps: true }
 );
 
-/* ================= AUTO UPDATE STATUS ================= */
+// /* ================= AUTO UPDATE STATUS ================= */
 
-batchSchema.pre("save", function (next) {
-  if (this.enrolledCount >= this.capacity) {
-    this.status = "full";
-  } else if (this.status !== "inactive") {
-    this.status = "active";
-  }
-  next();
-});
+// batchSchema.pre("save", function (next) {
+//   if (this.enrolledCount >= this.capacity) {
+//     this.status = "full";
+//   } else if (this.status !== "inactive") {
+//     this.status = "active";
+//   }
+//   next();
+// });
 
 module.exports = mongoose.model("Batch", batchSchema);
